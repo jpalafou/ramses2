@@ -31,3 +31,6 @@ AGENTS.md
 *.nsys-rep
 *.ncu-rep
 *.sqlite
+
+# Just for me
+secret/
