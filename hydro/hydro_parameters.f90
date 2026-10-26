@@ -1,5 +1,5 @@
 module hydro_parameters
-  use amr_parameters, only: ndim
+  use amr_parameters, only: ndim,dp
 
   ! Number of independant variables
 #ifndef NENER
@@ -51,6 +51,35 @@ module hydro_parameters
   integer,parameter::solver2d_hlld=4
   integer,parameter::solver2d_roe=5
   integer,parameter::solver2d_upwind=6
+
+contains
+
+  pure subroutine unpack_parent_cell(parent,minicells)
+    real(dp),intent(in)::parent(1:nvar)
+    real(dp),intent(out)::minicells(1:nvar_per_minicell,1:dofs_per_cell**ndim)
+    integer::iminicell,ilo,ihi
+
+    minicells(:,1)=parent(1:nvar_per_minicell)
+    do iminicell=2,dofs_per_cell**ndim
+       ilo=(iminicell-1)*nvar_per_minicell+1
+       ihi=iminicell*nvar_per_minicell
+       minicells(:,iminicell)=parent(1:nvar_per_minicell)+parent(ilo:ihi)
+       minicells(:,1)=minicells(:,1)-parent(ilo:ihi)
+    end do
+  end subroutine unpack_parent_cell
+
+  pure subroutine pack_parent_cell(minicells,parent)
+    real(dp),intent(in)::minicells(1:nvar_per_minicell,1:dofs_per_cell**ndim)
+    real(dp),intent(out)::parent(1:nvar)
+    integer::iminicell,ilo,ihi
+
+    parent(1:nvar_per_minicell)=sum(minicells,dim=2)/real(dofs_per_cell**ndim,kind=dp)
+    do iminicell=2,dofs_per_cell**ndim
+       ilo=(iminicell-1)*nvar_per_minicell+1
+       ihi=iminicell*nvar_per_minicell
+       parent(ilo:ihi)=minicells(:,iminicell)-parent(1:nvar_per_minicell)
+    end do
+  end subroutine pack_parent_cell
 
 end module hydro_parameters
 
