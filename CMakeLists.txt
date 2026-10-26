@@ -53,6 +53,7 @@ if(COMPILER STREQUAL "METAL")
     set(NPRE 4 CACHE STRING "Floating-point precision in bytes" FORCE)
 endif()
 set(NENER    0    CACHE STRING "Number of non-thermal energy variables")
+set(DOFS_PER_CELL 1 CACHE STRING "Number of hydro degrees of freedom per coordinate direction")
 set(NMETAL   0    CACHE STRING "Number of metal species")
 set(NPSCAL   0    CACHE STRING "Number of passive scalar tracers")
 set(NION     0    CACHE STRING "Number of ionisation species (auto-computed when RTZ=ON)")
@@ -119,10 +120,17 @@ if(DO_CR)
     math(EXPR NENER "${NENER} + ${NCRGRP}")
 endif()
 
-# NVAR = 5 (hydro) + NENER + NPSCAL + NMETAL + NION
-math(EXPR NVAR "5 + ${NENER} + ${NPSCAL} + ${NMETAL} + ${NION}")
+# Each AMR cell stores DOFS_PER_CELL**NDIM hydro states.
+math(EXPR NVAR_PER_MINICELL "5 + ${NENER} + ${NPSCAL} + ${NMETAL} + ${NION}")
+math(EXPR NVAR "${NVAR_PER_MINICELL} * ${DOFS_PER_CELL}")
+if(NDIM GREATER 1)
+    math(EXPR NVAR "${NVAR} * ${DOFS_PER_CELL}")
+endif()
+if(NDIM GREATER 2)
+    math(EXPR NVAR "${NVAR} * ${DOFS_PER_CELL}")
+endif()
 
-cmake_print_variables(COMPILER NDIM NVAR NENER NION NRTGRP NCRGRP UNITS INIT HYDRO GRAV MHD DO_RT DO_RTZ DO_CR TURB)
+cmake_print_variables(COMPILER NDIM NVAR DOFS_PER_CELL NENER NION NRTGRP NCRGRP UNITS INIT HYDRO GRAV MHD DO_RT DO_RTZ DO_CR TURB)
 
 # =============================================================================
 # Preprocessor defines
@@ -130,6 +138,7 @@ cmake_print_variables(COMPILER NDIM NVAR NENER NION NRTGRP NCRGRP UNITS INIT HYD
 set(defines
     NDIM=${NDIM}
     NVAR=${NVAR}
+    DOFS_PER_CELL=${DOFS_PER_CELL}
     NVECTOR=${NVECTOR}
     NPRE=${NPRE}
     NHILBERT=${NHILBERT}

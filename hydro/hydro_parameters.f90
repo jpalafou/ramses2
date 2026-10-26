@@ -7,11 +7,19 @@ module hydro_parameters
 #else
   integer,parameter::nener=NENER
 #endif
+  ! Number of hydro degrees of freedom per coordinate direction
+#ifndef DOFS_PER_CELL
+  integer,parameter::dofs_per_cell=1
+#else
+  integer,parameter::dofs_per_cell=DOFS_PER_CELL
+#endif
+  ! Number of packed variables and physical variables in one state
 #ifndef NVAR
-  integer,parameter::nvar=5+nener
+  integer,parameter::nvar=(5+nener)*dofs_per_cell**ndim
 #else
   integer,parameter::nvar=NVAR
 #endif
+  integer,parameter::nvar_per_minicell=nvar/dofs_per_cell**ndim
 
 #ifdef MHD
   integer,parameter::nprim=NVAR+3

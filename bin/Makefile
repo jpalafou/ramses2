@@ -16,6 +16,7 @@ DO_RTZ = 0
 INIT =
 UNITS =
 NENER = 0
+DOFS_PER_CELL = 1
 NMETAL = 0
 TURB = 0
 TRCFLX = 0
@@ -63,7 +64,14 @@ ifeq ($(DO_CR),1)
    NENER := $(NENER)+$(NCRGRP)
    DEFINES += -DMHD -DDO_CR -DNCRGRP=$(NCRGRP)
 endif
-NVAR := $(NHYDRO)+$(NENER)+$(NPSCAL)+$(NMETAL)+$(NION)
+NVAR_PER_MINICELL := $(NHYDRO)+$(NENER)+$(NPSCAL)+$(NMETAL)+$(NION)
+NVAR := ($(NVAR_PER_MINICELL))*$(DOFS_PER_CELL)
+ifeq ($(NDIM),2)
+NVAR := $(NVAR)*$(DOFS_PER_CELL)
+endif
+ifeq ($(NDIM),3)
+NVAR := $(NVAR)*$(DOFS_PER_CELL)*$(DOFS_PER_CELL)
+endif
 #############################################################################
 # Collect git version and Makefile options
 GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
@@ -71,7 +79,7 @@ GITHASH = $(shell git log --pretty=format:'%H' -n 1)
 GITREPO = $(shell git config --get remote.origin.url)
 BUILDDATE = $(shell date +"%D-%T")
 BUILDCOMMAND = ${MAKE} ${MAKEFLAGS}
-DEFINES += -DNDIM=$(NDIM) -DNVAR=$(NVAR)
+DEFINES += -DNDIM=$(NDIM) "-DNVAR=$(NVAR)" -DDOFS_PER_CELL=$(DOFS_PER_CELL)
 DEFINES += $(EXTRA_DEFINES)
 #############################################################################
 # RTZ options
@@ -259,7 +267,7 @@ ifeq ($(COMPILER),METAL)
    endif
    METALC       = xcrun -sdk macosx metal
    METALLIB     = xcrun -sdk macosx metallib
-   METALFLAGS   = -std=metal3.1 -O2 -DNDIM=$(NDIM) "-DNVAR=($(NVAR))" -I$(METAL_PATH) -I$(METAL_KPATH)
+   METALFLAGS   = -std=metal3.1 -O2 -DNDIM=$(NDIM) "-DNVAR=$(NVAR)" -I$(METAL_PATH) -I$(METAL_KPATH)
    ifeq ($(DEBUG),1)
       METALFLAGS += -gline-tables-only -frecord-sources
    endif

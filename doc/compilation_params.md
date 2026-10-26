@@ -13,6 +13,7 @@ You can compile the code by setting these parameters to your preffered value usi
 | `DO_CR = 0`      | `0` or `1`  | This turns on or off the cosmic ray solver. Requires `MHD=1`. |
 | `DO_RTZ = 0`     | `0` or `1`  | This turns on or off the radiative transfer solver with complex chemistry. |
 | `MPI = 0`        | `0` or `1`  | This turns on or off parallel computing using the Message Passing Interface (MPI) library. MPI must be properly installed on your machine. In particular, you have to check that the MPI library was configured for your Fortran compiler. |
+| `DOFS_PER_CELL = 1` | `integer >= 1` | Number of hydro degrees of freedom per coordinate direction. Each AMR cell stores `DOFS_PER_CELL^NDIM` hydro states containing all Euler, passive-scalar, and auxiliary variables. |
 | `NPSCAL = 0`     | `integer`  | Number of passive scalars advected by the hydro solver. |
 | `NENER = 0`      | `integer`  | Number of non-thermal energies used in the hydro solver. |
 | `NMETAL = 0`     | `integer`  | Number of metal species advected by the hydro solver. |

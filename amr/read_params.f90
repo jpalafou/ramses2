@@ -326,6 +326,7 @@ subroutine m_read_params(pst)
   real(kind=8)::smallc=1.d-10
   real(kind=8)::smallr=1.d-10
   character(LEN=10)::scheme='muscl'
+  character(LEN=10)::time_integrator='hancock'
   character(LEN=10)::riemann='llf'
   character(LEN=10)::riemann2d='none'
   logical ::induction=.false.
@@ -666,7 +667,7 @@ subroutine m_read_params(pst)
   namelist/hydro_params/gamma,courant_factor,smallr,smallc &
        & ,slope_type,slope_mag_type,difmag,etamag,eta_ohm,eta_ad,nimhd_solver,nimhd_split,nimhd_courant,nimhd_alpha,gamma_rad &
        & ,dual_energy,T2_fix,induction,entropy,sgs_turb,equilibrium_sgs,riemann,riemann2d,constant_gravity &
-       & ,niter_riemann,scheme,switch_llf_dmin,switch_llf_pmin,smagorinsky_lilly_constant
+       & ,niter_riemann,scheme,time_integrator,switch_llf_dmin,switch_llf_pmin,smagorinsky_lilly_constant
   ! Grid refinement parameters
   namelist/refine_params/x_refine,y_refine,z_refine,r_refine &
        & ,a_refine,b_refine,exp_refine,jeans_refine,mass_cut_refine &
@@ -1325,6 +1326,14 @@ subroutine m_read_params(pst)
 #endif
   endif
 
+  select case(trim(time_integrator))
+  case('hancock','ssprk3','rk4')
+  case default
+     write(*,*)'Error: unsupported time_integrator: ',trim(time_integrator)
+     write(*,*)'Choose hancock, ssprk3, or rk4'
+     nml_ok=.false.
+  end select
+
   ! Check that lightcone parameters are consistent
   if (lightcone) then
      if (ndim /= 3) then
@@ -1665,6 +1674,7 @@ subroutine m_read_params(pst)
   s%r%ichem=ichem
   s%r%iturb=iturb
   s%r%scheme=scheme
+  s%r%time_integrator=time_integrator
   s%r%constant_gravity=constant_gravity
 #ifndef MHD
   if(riemann=='llf')s%r%riemann=solver_llf
