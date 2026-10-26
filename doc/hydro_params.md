@@ -5,6 +5,7 @@ This namelist is called &HYDRO_PARAMS, and is used to specify runtime parameters
 | `gamma=1.4`&nbsp;&nbsp;&nbsp;&nbsp;           |  `Real`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    | Adiabatic exponent for the perfect gas EOS |
 | `gamma_rad=1.333`    |  `Real array` | Adiabatic exponent for each non-thermal pressure EOS (used only if `NENER>1`) |
 | `courant_factor=0.5` |  `Real`    | CFL number for time step control (less than 1) |
+| `time_integrator='hancock'` | `Character LEN=10` | Hydro time integrator. Supported values are `hancock`, `ssprk3`, and `rk4`. Only `hancock` is implemented initially. |
 | `constant_gravity=0.0`|  `Real array` | 3 components of the constant gravitational acceleration in code units in case `poisson=.false.` |
 | `smallr=1d-10 `      |  `Real`    | Minimum density to prevent floating exceptions |
 | `smallc=1d-10 `      |  `Real`    | Minimum sound speed to prevent floating exceptions |
