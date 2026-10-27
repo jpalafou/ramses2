@@ -8,6 +8,8 @@ module hydro_commons
      integer::io1,io2,jo1,jo2,ko1,ko2
      real(kind=8),dimension(:,:,:,:),allocatable::uloc
      real(kind=8),dimension(:,:,:,:),allocatable::uvirtual
+     ! Left and right virtual-cell face states in each active direction
+     real(kind=8),dimension(:,:,:,:,:,:),allocatable::uface
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -44,6 +46,7 @@ module hydro_commons
      procedure :: init => init_hydro_kernel
      procedure :: size => size_hydro_kernel
      procedure :: unpack_stencil => unpack_hydro_stencil
+     procedure :: interpolate_faces => interpolate_hydro_faces
   end type hydro_kernel_t
 
   type hydro_workspace_t
@@ -77,6 +80,10 @@ contains
        allocate(h%uvirtual(dofs_per_cell*h%iu1:dofs_per_cell*(h%iu2+1)-1, &
             & ndofsy*h%ju1:ndofsy*(h%ju2+1)-1, &
             & ndofsz*h%ku1:ndofsz*(h%ku2+1)-1,1:nvar_per_minicell))
+       allocate(h%uface(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+            & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+            & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
+            & 1:nvar_per_minicell,1:2,1:ndim))
     endif
     allocate(h%gloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:ndim))
     allocate(h%qloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nprim))
@@ -143,6 +150,57 @@ contains
     end do
   end subroutine unpack_hydro_stencil
 
+  subroutine interpolate_hydro_faces(h,idim)
+    use amr_parameters, only: ndim,dp
+    use hydro_parameters, only: p3_center,p3_face_left,p3_face_right
+
+    class(hydro_kernel_t),intent(inout)::h
+    integer,intent(in)::idim
+    integer::i,j,k,ii,jj,kk,jdim
+    integer::reach(1:3)
+    real(dp)::wl(-2:2,1:3),wr(-2:2,1:3),wleft,wright
+
+    wl=0.0_dp
+    wr=0.0_dp
+    reach=0
+    do jdim=1,ndim
+       if(jdim==idim)then
+          wl(:,jdim)=p3_face_left
+          wr(:,jdim)=p3_face_right
+          reach(jdim)=2
+       else
+          wl(-1:1,jdim)=p3_center
+          wr(-1:1,jdim)=p3_center
+          reach(jdim)=1
+       endif
+    end do
+    do jdim=ndim+1,3
+       wl(0,jdim)=1.0_dp
+       wr(0,jdim)=1.0_dp
+    end do
+
+    do k=lbound(h%uvirtual,3)+reach(3),ubound(h%uvirtual,3)-reach(3)
+       do j=lbound(h%uvirtual,2)+reach(2),ubound(h%uvirtual,2)-reach(2)
+          do i=lbound(h%uvirtual,1)+reach(1),ubound(h%uvirtual,1)-reach(1)
+             h%uface(i,j,k,:,1,idim)=0.0_dp
+             h%uface(i,j,k,:,2,idim)=0.0_dp
+             do kk=-reach(3),reach(3)
+                do jj=-reach(2),reach(2)
+                   do ii=-reach(1),reach(1)
+                      wleft=wl(ii,1)*wl(jj,2)*wl(kk,3)
+                      wright=wr(ii,1)*wr(jj,2)*wr(kk,3)
+                      h%uface(i,j,k,:,1,idim)=h%uface(i,j,k,:,1,idim) &
+                           & +wleft*h%uvirtual(i+ii,j+jj,k+kk,:)
+                      h%uface(i,j,k,:,2,idim)=h%uface(i,j,k,:,2,idim) &
+                           & +wright*h%uvirtual(i+ii,j+jj,k+kk,:)
+                   end do
+                end do
+             end do
+          end do
+       end do
+    end do
+  end subroutine interpolate_hydro_faces
+
   function size_hydro_kernel(h)
     use amr_parameters, only: ndim
     use hydro_parameters, only: nvar
@@ -154,6 +212,7 @@ contains
     nint=0
     nint=nint+size(transfer(h%uloc,(/1/)))
     if(allocated(h%uvirtual))nint=nint+size(transfer(h%uvirtual,(/1/)))
+    if(allocated(h%uface))nint=nint+size(transfer(h%uface,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
