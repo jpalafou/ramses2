@@ -244,7 +244,7 @@ end subroutine r_nimhd_fine
 subroutine godfine1(s,ind_grid,ilevel,h)
   use mdl_module
   use amr_parameters, only: ndim, twondim, twotondim
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nvar,dofs_per_cell
   use ramses_commons, only: ramses_t
   use nbors_utils
   use hydro_commons
@@ -649,6 +649,9 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   end do
   ! End over octs
   end do
+
+  ! Expand packed parent cells into the virtual hydro mesh
+  if(dofs_per_cell>1)call h%unpack_stencil()
 
   !-----------------------------------------------
   ! Compute flux using second-order Godunov method
