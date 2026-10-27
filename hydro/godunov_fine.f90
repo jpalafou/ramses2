@@ -665,7 +665,12 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   end do
 
   ! Expand packed parent cells into the virtual hydro mesh
-  if(dofs_per_cell>1)call h%unpack_stencil()
+  if(dofs_per_cell>1)then
+     call h%unpack_stencil()
+     do idim=1,ndim
+        call h%interpolate_faces(idim)
+     end do
+  endif
 
   !-----------------------------------------------
   ! Compute flux using second-order Godunov method

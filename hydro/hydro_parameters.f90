@@ -52,6 +52,12 @@ module hydro_parameters
   integer,parameter::solver2d_roe=5
   integer,parameter::solver2d_upwind=6
 
+  ! Unlimited fourth-order conservative interpolation stencils
+  real(dp),parameter::p3_center(-1:1)=(/-1,26,-1/)/24.0_dp
+  real(dp),parameter::p3_face_left(-2:2)=(/-1,10,20,-6,1/)/24.0_dp
+  real(dp),parameter::p3_face_right(-2:2)=(/1,-6,20,10,-1/)/24.0_dp
+  real(dp),parameter::p3_integrate(-1:1)=(/1,22,1/)/24.0_dp
+
 contains
 
   pure subroutine unpack_parent_cell(parent,minicells)
