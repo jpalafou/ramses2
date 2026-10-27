@@ -7,6 +7,7 @@ module hydro_commons
      integer::if1,if2,jf1,jf2,kf1,kf2
      integer::io1,io2,jo1,jo2,ko1,ko2
      real(kind=8),dimension(:,:,:,:),allocatable::uloc
+     real(kind=8),dimension(:,:,:,:),allocatable::uvirtual
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -42,6 +43,7 @@ module hydro_commons
    contains
      procedure :: init => init_hydro_kernel
      procedure :: size => size_hydro_kernel
+     procedure :: unpack_stencil => unpack_hydro_stencil
   end type hydro_kernel_t
 
   type hydro_workspace_t
@@ -52,10 +54,10 @@ contains
 
   subroutine init_hydro_kernel(h,nn)
     use amr_parameters, only: ndim
-    use hydro_parameters, only: nvar
+    use hydro_parameters, only: nvar,nvar_per_minicell,dofs_per_cell
     use rt_parameters, only: nrtvar
 
-    integer::nn
+    integer::nn,ndofsy,ndofsz
     class(hydro_kernel_t)::h
 
     h%iu1=-1; h%iu2=nn+2
@@ -69,6 +71,13 @@ contains
     h%ko1=(1-ndim/3); h%ko2=(1-ndim/3)+(nn/2+1)*(ndim/3)
 
     allocate(h%uloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nvar))
+    if(dofs_per_cell>1)then
+       ndofsy=merge(dofs_per_cell,1,ndim>1)
+       ndofsz=merge(dofs_per_cell,1,ndim>2)
+       allocate(h%uvirtual(dofs_per_cell*h%iu1:dofs_per_cell*(h%iu2+1)-1, &
+            & ndofsy*h%ju1:ndofsy*(h%ju2+1)-1, &
+            & ndofsz*h%ku1:ndofsz*(h%ku2+1)-1,1:nvar_per_minicell))
+    endif
     allocate(h%gloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:ndim))
     allocate(h%qloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nprim))
     allocate(h%cloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2))
@@ -105,6 +114,35 @@ contains
 #endif
   end subroutine init_hydro_kernel
 
+  subroutine unpack_hydro_stencil(h)
+    use amr_parameters, only: ndim,dp
+    use hydro_parameters, only: nvar,nvar_per_minicell,dofs_per_cell,unpack_parent_cell
+
+    class(hydro_kernel_t),intent(inout)::h
+    integer::i,j,k,ii,jj,kk,iminicell,ndofsy,ndofsz
+    real(dp)::parent(1:nvar)
+    real(dp)::minicells(1:nvar_per_minicell,1:dofs_per_cell**ndim)
+
+    ndofsy=merge(dofs_per_cell,1,ndim>1)
+    ndofsz=merge(dofs_per_cell,1,ndim>2)
+    do k=h%ku1,h%ku2
+       do j=h%ju1,h%ju2
+          do i=h%iu1,h%iu2
+             parent=h%uloc(i,j,k,:)
+             call unpack_parent_cell(parent,minicells)
+             do kk=0,ndofsz-1
+                do jj=0,ndofsy-1
+                   do ii=0,dofs_per_cell-1
+                      iminicell=1+ii+dofs_per_cell*jj+dofs_per_cell**2*kk
+                      h%uvirtual(dofs_per_cell*i+ii,ndofsy*j+jj,ndofsz*k+kk,:)=minicells(:,iminicell)
+                   end do
+                end do
+             end do
+          end do
+       end do
+    end do
+  end subroutine unpack_hydro_stencil
+
   function size_hydro_kernel(h)
     use amr_parameters, only: ndim
     use hydro_parameters, only: nvar
@@ -115,6 +153,7 @@ contains
 
     nint=0
     nint=nint+size(transfer(h%uloc,(/1/)))
+    if(allocated(h%uvirtual))nint=nint+size(transfer(h%uvirtual,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
