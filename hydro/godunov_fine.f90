@@ -666,10 +666,16 @@ subroutine godfine1(s,ind_grid,ilevel,h)
 
   ! Expand packed parent cells into the virtual hydro mesh
   if(dofs_per_cell>1)then
+#ifdef MHD
+     write(*,*)'High-order hydro does not support MHD'
+     stop
+#else
      call h%unpack_stencil()
      do idim=1,ndim
         call h%interpolate_faces(idim)
      end do
+     call compute_virtual_fluxes(h,s%h_params)
+#endif
   endif
 
   !-----------------------------------------------
@@ -1362,6 +1368,119 @@ subroutine godfine1(s,ind_grid,ilevel,h)
 #endif
 
 end subroutine godfine1
+!###########################################################
+!###########################################################
+!###########################################################
+!###########################################################
+#ifndef MHD
+subroutine compute_virtual_fluxes(h,params)
+  use amr_parameters, only: ndim
+  use amr_commons, only: hydro_params_t
+  use hydro_commons, only: hydro_kernel_t
+  use hydro_parameters, only: nvar_per_minicell,nprim,nener, &
+       & solver_llf,solver_hll,solver_hllc
+  implicit none
+
+  type(hydro_kernel_t),intent(inout)::h
+  type(hydro_params_t),intent(in)::params
+  integer::i,j,k,idim
+  integer::lower(1:3),upper(1:3),reach(1:3),shift(1:3)
+
+  if(nener>0)then
+     write(*,*)'High-order hydro does not support non-thermal energies'
+     stop
+  endif
+
+  do idim=1,ndim
+     reach=0
+     reach(1:ndim)=1
+     reach(idim)=2
+     lower=(/lbound(h%uface,1),lbound(h%uface,2),lbound(h%uface,3)/)+reach
+     upper=(/ubound(h%uface,1),ubound(h%uface,2),ubound(h%uface,3)/)-reach
+     shift=0
+     shift(idim)=1
+     lower(idim)=lower(idim)+1
+
+     ! Interface indices refer to the virtual cell on the positive side
+     do k=lower(3),upper(3)
+        do j=lower(2),upper(2)
+           do i=lower(1),upper(1)
+              call solve_virtual_riemann( &
+                   & h%uface(i-shift(1),j-shift(2),k-shift(3),:,2,idim), &
+                   & h%uface(i,j,k,:,1,idim),h%fvirtual(i,j,k,:,idim),idim,params)
+           end do
+        end do
+     end do
+  end do
+
+contains
+
+  subroutine solve_virtual_riemann(uleft,uright,flux,idim,params)
+    real(kind=8),intent(in)::uleft(1:nvar_per_minicell),uright(1:nvar_per_minicell)
+    real(kind=8),intent(out)::flux(1:nvar_per_minicell)
+    integer,intent(in)::idim
+    type(hydro_params_t),intent(in)::params
+    integer::ln,lt1,lt2
+    real(kind=8)::ql(1:nvar_per_minicell),qr(1:nvar_per_minicell)
+    real(kind=8)::qleft(1:nprim),qright(1:nprim),fgdnv(1:nprim+1)
+
+    call ctoprim_virtual(uleft,ql,params)
+    call ctoprim_virtual(uright,qr,params)
+
+    select case(idim)
+    case(1)
+       ln=2; lt1=3; lt2=4
+    case(2)
+       ln=3; lt1=2; lt2=4
+    case(3)
+       ln=4; lt1=2; lt2=3
+    end select
+
+    ! Existing Riemann solvers use packed NVAR-sized work arrays
+    qleft=0.0d0
+    qright=0.0d0
+    qleft(1:5)=(/ql(1),ql(ln),ql(lt1),ql(lt2),ql(5)/)
+    qright(1:5)=(/qr(1),qr(ln),qr(lt1),qr(lt2),qr(5)/)
+    if(nvar_per_minicell>5)then
+       qleft(6:nvar_per_minicell)=ql(6:nvar_per_minicell)
+       qright(6:nvar_per_minicell)=qr(6:nvar_per_minicell)
+    endif
+
+    if(params%riemann==solver_llf)then
+       call riemann_llf(qleft,qright,fgdnv,params)
+    else if(params%riemann==solver_hll)then
+       call riemann_hll(qleft,qright,fgdnv,params)
+    else if(params%riemann==solver_hllc)then
+       call riemann_hllc(qleft,qright,fgdnv,params)
+    else
+       write(*,*)'Unknown Riemann solver'
+       stop
+    endif
+
+    flux(1)=fgdnv(1)
+    flux(ln)=fgdnv(2)
+    flux(lt1)=fgdnv(3)
+    flux(lt2)=fgdnv(4)
+    flux(5:nvar_per_minicell)=fgdnv(5:nvar_per_minicell)
+  end subroutine solve_virtual_riemann
+
+  subroutine ctoprim_virtual(u,q,params)
+    real(kind=8),intent(in)::u(1:nvar_per_minicell)
+    real(kind=8),intent(out)::q(1:nvar_per_minicell)
+    type(hydro_params_t),intent(in)::params
+    real(kind=8)::ekin,oneoverrho,smalle
+
+    q(1)=max(u(1),params%smallr)
+    oneoverrho=1.0d0/q(1)
+    q(2:4)=u(2:4)*oneoverrho
+    ekin=0.5d0*q(1)*sum(q(2:4)**2)
+    smalle=params%smallc**2/params%gamma/(params%gamma-1.0d0)
+    q(5)=(params%gamma-1.0d0)*max(u(5)-ekin,smalle*q(1))
+    if(nvar_per_minicell>5)q(6:nvar_per_minicell)=u(6:nvar_per_minicell)*oneoverrho
+  end subroutine ctoprim_virtual
+
+end subroutine compute_virtual_fluxes
+#endif
 !###########################################################
 !###########################################################
 !###########################################################

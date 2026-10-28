@@ -10,6 +10,8 @@ module hydro_commons
      real(kind=8),dimension(:,:,:,:),allocatable::uvirtual
      ! Left and right virtual-cell face states in each active direction
      real(kind=8),dimension(:,:,:,:,:,:),allocatable::uface
+     ! Pointwise fluxes at virtual-cell interfaces
+     real(kind=8),dimension(:,:,:,:,:),allocatable::fvirtual
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -84,6 +86,10 @@ contains
             & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
             & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
             & 1:nvar_per_minicell,1:2,1:ndim))
+       allocate(h%fvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+            & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+            & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
+            & 1:nvar_per_minicell,1:ndim))
     endif
     allocate(h%gloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:ndim))
     allocate(h%qloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nprim))
@@ -213,6 +219,7 @@ contains
     nint=nint+size(transfer(h%uloc,(/1/)))
     if(allocated(h%uvirtual))nint=nint+size(transfer(h%uvirtual,(/1/)))
     if(allocated(h%uface))nint=nint+size(transfer(h%uface,(/1/)))
+    if(allocated(h%fvirtual))nint=nint+size(transfer(h%fvirtual,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
