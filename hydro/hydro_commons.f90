@@ -14,6 +14,8 @@ module hydro_commons
      real(kind=8),dimension(:,:,:,:,:),allocatable::fvirtual
      ! Face-averaged fluxes at virtual-cell interfaces
      real(kind=8),dimension(:,:,:,:,:),allocatable::faverage
+     ! Flux divergence in the central virtual cells
+     real(kind=8),dimension(:,:,:,:),allocatable::dudt
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -52,6 +54,7 @@ module hydro_commons
      procedure :: unpack_stencil => unpack_hydro_stencil
      procedure :: interpolate_faces => interpolate_hydro_faces
      procedure :: integrate_fluxes => integrate_hydro_fluxes
+     procedure :: compute_dudt => compute_hydro_dudt
   end type hydro_kernel_t
 
   type hydro_workspace_t
@@ -97,6 +100,10 @@ contains
             & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
             & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
             & 1:nvar_per_minicell,1:ndim))
+       allocate(h%dudt(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+            & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+            & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
+            & 1:nvar_per_minicell))
     endif
     allocate(h%gloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:ndim))
     allocate(h%qloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nprim))
@@ -265,6 +272,44 @@ contains
     end do
   end subroutine integrate_hydro_fluxes
 
+  subroutine compute_hydro_dudt(h,dx)
+    use amr_parameters, only: ndim,dp
+    use hydro_parameters, only: dofs_per_cell
+
+    class(hydro_kernel_t),intent(inout)::h
+    real(dp),intent(in)::dx
+    integer::i,j,k,idim
+    integer::lower(1:3),upper(1:3),shift(1:3)
+    real(dp)::oneoverdx
+
+    lower=(/dofs_per_cell*h%if1,h%jf1,h%kf1/)
+    upper=(/dofs_per_cell*h%if2-1,h%jf1,h%kf1/)
+    if(ndim>1)then
+       lower(2)=dofs_per_cell*h%jf1
+       upper(2)=dofs_per_cell*h%jf2-1
+    endif
+    if(ndim>2)then
+       lower(3)=dofs_per_cell*h%kf1
+       upper(3)=dofs_per_cell*h%kf2-1
+    endif
+
+    h%dudt(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:)=0.0_dp
+    oneoverdx=real(dofs_per_cell,kind=dp)/dx
+    do idim=1,ndim
+       shift=0
+       shift(idim)=1
+       do k=lower(3),upper(3)
+          do j=lower(2),upper(2)
+             do i=lower(1),upper(1)
+                h%dudt(i,j,k,:)=h%dudt(i,j,k,:) &
+                     & +oneoverdx*(h%faverage(i,j,k,:,idim) &
+                     & -h%faverage(i+shift(1),j+shift(2),k+shift(3),:,idim))
+             end do
+          end do
+       end do
+    end do
+  end subroutine compute_hydro_dudt
+
   function size_hydro_kernel(h)
     use amr_parameters, only: ndim
     use hydro_parameters, only: nvar
@@ -279,6 +324,7 @@ contains
     if(allocated(h%uface))nint=nint+size(transfer(h%uface,(/1/)))
     if(allocated(h%fvirtual))nint=nint+size(transfer(h%fvirtual,(/1/)))
     if(allocated(h%faverage))nint=nint+size(transfer(h%faverage,(/1/)))
+    if(allocated(h%dudt))nint=nint+size(transfer(h%dudt,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
