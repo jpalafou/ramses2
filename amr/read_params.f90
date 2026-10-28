@@ -1326,13 +1326,11 @@ subroutine m_read_params(pst)
 #endif
   endif
 
-  select case(trim(time_integrator))
-  case('hancock','ssprk3','rk4')
-  case default
+  if(trim(time_integrator)/='hancock')then
      write(*,*)'Error: unsupported time_integrator: ',trim(time_integrator)
-     write(*,*)'Choose hancock, ssprk3, or rk4'
+     write(*,*)'Only hancock is currently implemented'
      nml_ok=.false.
-  end select
+  endif
 
   ! Check that lightcone parameters are consistent
   if (lightcone) then
