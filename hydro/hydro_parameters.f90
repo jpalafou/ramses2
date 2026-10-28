@@ -1,5 +1,8 @@
 module hydro_parameters
-  use amr_parameters, only: ndim,dp
+  use amr_parameters, only: ndim
+#if DOFS_PER_CELL>1
+  use amr_parameters, only: dp
+#endif
 
   ! Number of independant variables
 #ifndef NENER
@@ -19,7 +22,10 @@ module hydro_parameters
 #else
   integer,parameter::nvar=NVAR
 #endif
-  integer,parameter::nvar_per_minicell=nvar/dofs_per_cell**ndim
+#if DOFS_PER_CELL>1
+  integer,parameter::nminicell=dofs_per_cell**ndim
+  integer,parameter::nvar_per_minicell=nvar/nminicell
+#endif
 
 #ifdef MHD
   integer,parameter::nprim=NVAR+3
@@ -52,6 +58,7 @@ module hydro_parameters
   integer,parameter::solver2d_roe=5
   integer,parameter::solver2d_upwind=6
 
+#if DOFS_PER_CELL>1
   ! Unlimited fourth-order conservative interpolation stencils
   real(dp),parameter::p3_center(-1:1)=(/-1,26,-1/)/24.0_dp
   real(dp),parameter::p3_face_left(-2:2)=(/-1,10,20,-6,1/)/24.0_dp
@@ -62,11 +69,11 @@ contains
 
   pure subroutine unpack_parent_cell(parent,minicells)
     real(dp),intent(in)::parent(1:nvar)
-    real(dp),intent(out)::minicells(1:nvar_per_minicell,1:dofs_per_cell**ndim)
+    real(dp),intent(out)::minicells(1:nvar_per_minicell,1:nminicell)
     integer::iminicell,ilo,ihi
 
     minicells(:,1)=parent(1:nvar_per_minicell)
-    do iminicell=2,dofs_per_cell**ndim
+    do iminicell=2,nminicell
        ilo=(iminicell-1)*nvar_per_minicell+1
        ihi=iminicell*nvar_per_minicell
        minicells(:,iminicell)=parent(1:nvar_per_minicell)+parent(ilo:ihi)
@@ -75,17 +82,18 @@ contains
   end subroutine unpack_parent_cell
 
   pure subroutine pack_parent_cell(minicells,parent)
-    real(dp),intent(in)::minicells(1:nvar_per_minicell,1:dofs_per_cell**ndim)
+    real(dp),intent(in)::minicells(1:nvar_per_minicell,1:nminicell)
     real(dp),intent(out)::parent(1:nvar)
     integer::iminicell,ilo,ihi
 
-    parent(1:nvar_per_minicell)=sum(minicells,dim=2)/real(dofs_per_cell**ndim,kind=dp)
-    do iminicell=2,dofs_per_cell**ndim
+    parent(1:nvar_per_minicell)=sum(minicells,dim=2)/real(nminicell,kind=dp)
+    do iminicell=2,nminicell
        ilo=(iminicell-1)*nvar_per_minicell+1
        ihi=iminicell*nvar_per_minicell
        parent(ilo:ihi)=minicells(:,iminicell)-parent(1:nvar_per_minicell)
     end do
   end subroutine pack_parent_cell
+#endif
 
 end module hydro_parameters
 
