@@ -258,7 +258,7 @@ end subroutine r_nimhd_fine
 subroutine godfine1(s,ind_grid,ilevel,h)
   use mdl_module
   use amr_parameters, only: ndim, twondim, twotondim
-  use hydro_parameters, only: nvar,dofs_per_cell
+  use hydro_parameters, only: nvar
   use ramses_commons, only: ramses_t
   use nbors_utils
   use hydro_commons
@@ -664,24 +664,24 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   ! End over octs
   end do
 
+#if DOFS_PER_CELL>1
   ! Expand packed parent cells into the virtual hydro mesh
-  if(dofs_per_cell>1)then
 #ifdef MHD
-     write(*,*)'High-order hydro does not support MHD'
-     stop
+  write(*,*)'High-order hydro does not support MHD'
+  stop
 #else
-     call h%unpack_stencil()
-     do idim=1,ndim
-        call h%interpolate_faces(idim)
-     end do
-     call compute_virtual_fluxes(h,s%h_params)
-     do idim=1,ndim
-        call h%integrate_fluxes(idim)
-     end do
-     call h%compute_dudt(dx)
-     call h%advance_stage(g%dtnew(ilevel))
+  call h%unpack_stencil()
+  do idim=1,ndim
+     call h%interpolate_faces(idim)
+  end do
+  call compute_virtual_fluxes(h,s%h_params)
+  do idim=1,ndim
+     call h%integrate_fluxes(idim)
+  end do
+  call h%compute_dudt(dx)
+  call h%advance_stage(g%dtnew(ilevel))
 #endif
-  endif
+#endif
 
   !-----------------------------------------------
   ! Compute flux using second-order Godunov method
@@ -1373,11 +1373,11 @@ subroutine godfine1(s,ind_grid,ilevel,h)
 #endif
 
 end subroutine godfine1
+#if DOFS_PER_CELL>1 && !defined(MHD)
 !###########################################################
 !###########################################################
 !###########################################################
 !###########################################################
-#ifndef MHD
 subroutine compute_virtual_fluxes(h,params)
   use amr_parameters, only: ndim
   use amr_commons, only: hydro_params_t
