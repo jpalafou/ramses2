@@ -16,6 +16,8 @@ module hydro_commons
      real(kind=8),dimension(:,:,:,:,:),allocatable::faverage
      ! Flux divergence in the central virtual cells
      real(kind=8),dimension(:,:,:,:),allocatable::dudt
+     ! Candidate Runge--Kutta stage in the central virtual cells
+     real(kind=8),dimension(:,:,:,:),allocatable::ustage
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -55,6 +57,7 @@ module hydro_commons
      procedure :: interpolate_faces => interpolate_hydro_faces
      procedure :: integrate_fluxes => integrate_hydro_fluxes
      procedure :: compute_dudt => compute_hydro_dudt
+     procedure :: advance_stage => advance_hydro_stage
   end type hydro_kernel_t
 
   type hydro_workspace_t
@@ -69,6 +72,7 @@ contains
     use rt_parameters, only: nrtvar
 
     integer::nn,ndofsy,ndofsz
+    integer::lower(1:3),upper(1:3)
     class(hydro_kernel_t)::h
 
     h%iu1=-1; h%iu2=nn+2
@@ -100,10 +104,20 @@ contains
             & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
             & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
             & 1:nvar_per_minicell,1:ndim))
-       allocate(h%dudt(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
-            & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
-            & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
-            & 1:nvar_per_minicell))
+       lower=(/dofs_per_cell*h%if1,h%jf1,h%kf1/)
+       upper=(/dofs_per_cell*h%if2-1,h%jf1,h%kf1/)
+       if(ndim>1)then
+          lower(2)=dofs_per_cell*h%jf1
+          upper(2)=dofs_per_cell*h%jf2-1
+       endif
+       if(ndim>2)then
+          lower(3)=dofs_per_cell*h%kf1
+          upper(3)=dofs_per_cell*h%kf2-1
+       endif
+       allocate(h%dudt(lower(1):upper(1),lower(2):upper(2), &
+            & lower(3):upper(3),1:nvar_per_minicell))
+       allocate(h%ustage(lower(1):upper(1),lower(2):upper(2), &
+            & lower(3):upper(3),1:nvar_per_minicell))
     endif
     allocate(h%gloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:ndim))
     allocate(h%qloc (h%iu1:h%iu2,h%ju1:h%ju2,h%ku1:h%ku2,1:nprim))
@@ -282,18 +296,10 @@ contains
     integer::lower(1:3),upper(1:3),shift(1:3)
     real(dp)::oneoverdx
 
-    lower=(/dofs_per_cell*h%if1,h%jf1,h%kf1/)
-    upper=(/dofs_per_cell*h%if2-1,h%jf1,h%kf1/)
-    if(ndim>1)then
-       lower(2)=dofs_per_cell*h%jf1
-       upper(2)=dofs_per_cell*h%jf2-1
-    endif
-    if(ndim>2)then
-       lower(3)=dofs_per_cell*h%kf1
-       upper(3)=dofs_per_cell*h%kf2-1
-    endif
+    lower=(/lbound(h%dudt,1),lbound(h%dudt,2),lbound(h%dudt,3)/)
+    upper=(/ubound(h%dudt,1),ubound(h%dudt,2),ubound(h%dudt,3)/)
 
-    h%dudt(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:)=0.0_dp
+    h%dudt=0.0_dp
     oneoverdx=real(dofs_per_cell,kind=dp)/dx
     do idim=1,ndim
        shift=0
@@ -310,6 +316,19 @@ contains
     end do
   end subroutine compute_hydro_dudt
 
+  subroutine advance_hydro_stage(h,dt)
+    use amr_parameters, only: dp
+
+    class(hydro_kernel_t),intent(inout)::h
+    real(dp),intent(in)::dt
+    integer::lower(1:3),upper(1:3)
+
+    lower=(/lbound(h%ustage,1),lbound(h%ustage,2),lbound(h%ustage,3)/)
+    upper=(/ubound(h%ustage,1),ubound(h%ustage,2),ubound(h%ustage,3)/)
+    h%ustage=h%uvirtual(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:) &
+         & +dt*h%dudt
+  end subroutine advance_hydro_stage
+
   function size_hydro_kernel(h)
     use amr_parameters, only: ndim
     use hydro_parameters, only: nvar
@@ -325,6 +344,7 @@ contains
     if(allocated(h%fvirtual))nint=nint+size(transfer(h%fvirtual,(/1/)))
     if(allocated(h%faverage))nint=nint+size(transfer(h%faverage,(/1/)))
     if(allocated(h%dudt))nint=nint+size(transfer(h%dudt,(/1/)))
+    if(allocated(h%ustage))nint=nint+size(transfer(h%ustage,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
