@@ -12,6 +12,8 @@ module hydro_commons
      real(kind=8),dimension(:,:,:,:,:,:),allocatable::uface
      ! Pointwise fluxes at virtual-cell interfaces
      real(kind=8),dimension(:,:,:,:,:),allocatable::fvirtual
+     ! Face-averaged fluxes at virtual-cell interfaces
+     real(kind=8),dimension(:,:,:,:,:),allocatable::faverage
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
      real(kind=8),dimension(:,:,:),allocatable::cloc
@@ -49,6 +51,7 @@ module hydro_commons
      procedure :: size => size_hydro_kernel
      procedure :: unpack_stencil => unpack_hydro_stencil
      procedure :: interpolate_faces => interpolate_hydro_faces
+     procedure :: integrate_fluxes => integrate_hydro_fluxes
   end type hydro_kernel_t
 
   type hydro_workspace_t
@@ -87,6 +90,10 @@ contains
             & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
             & 1:nvar_per_minicell,1:2,1:ndim))
        allocate(h%fvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+            & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+            & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
+            & 1:nvar_per_minicell,1:ndim))
+       allocate(h%faverage(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
             & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
             & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
             & 1:nvar_per_minicell,1:ndim))
@@ -207,6 +214,57 @@ contains
     end do
   end subroutine interpolate_hydro_faces
 
+  subroutine integrate_hydro_fluxes(h,idim)
+    use amr_parameters, only: ndim,dp
+    use hydro_parameters, only: p3_integrate
+
+    class(hydro_kernel_t),intent(inout)::h
+    integer,intent(in)::idim
+    integer::i,j,k,ii,jj,kk,jdim
+    integer::lower(1:3),upper(1:3),face_reach(1:3),integration_reach(1:3)
+    real(dp)::w(-1:1,1:3),weight
+
+    face_reach=0
+    face_reach(1:ndim)=1
+    face_reach(idim)=2
+    lower=(/lbound(h%fvirtual,1),lbound(h%fvirtual,2),lbound(h%fvirtual,3)/)+face_reach
+    upper=(/ubound(h%fvirtual,1),ubound(h%fvirtual,2),ubound(h%fvirtual,3)/)-face_reach
+    lower(idim)=lower(idim)+1
+
+    w=0.0_dp
+    integration_reach=0
+    do jdim=1,ndim
+       if(jdim==idim)then
+          w(0,jdim)=1.0_dp
+       else
+          w(:,jdim)=p3_integrate
+          integration_reach(jdim)=1
+       endif
+    end do
+    do jdim=ndim+1,3
+       w(0,jdim)=1.0_dp
+    end do
+    lower=lower+integration_reach
+    upper=upper-integration_reach
+
+    do k=lower(3),upper(3)
+       do j=lower(2),upper(2)
+          do i=lower(1),upper(1)
+             h%faverage(i,j,k,:,idim)=0.0_dp
+             do kk=-integration_reach(3),integration_reach(3)
+                do jj=-integration_reach(2),integration_reach(2)
+                   do ii=-integration_reach(1),integration_reach(1)
+                      weight=w(ii,1)*w(jj,2)*w(kk,3)
+                      h%faverage(i,j,k,:,idim)=h%faverage(i,j,k,:,idim) &
+                           & +weight*h%fvirtual(i+ii,j+jj,k+kk,:,idim)
+                   end do
+                end do
+             end do
+          end do
+       end do
+    end do
+  end subroutine integrate_hydro_fluxes
+
   function size_hydro_kernel(h)
     use amr_parameters, only: ndim
     use hydro_parameters, only: nvar
@@ -220,6 +278,7 @@ contains
     if(allocated(h%uvirtual))nint=nint+size(transfer(h%uvirtual,(/1/)))
     if(allocated(h%uface))nint=nint+size(transfer(h%uface,(/1/)))
     if(allocated(h%fvirtual))nint=nint+size(transfer(h%fvirtual,(/1/)))
+    if(allocated(h%faverage))nint=nint+size(transfer(h%faverage,(/1/)))
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))
     nint=nint+size(transfer(h%cloc,(/1/)))
