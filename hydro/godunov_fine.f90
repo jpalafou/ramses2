@@ -679,6 +679,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
         call h%integrate_fluxes(idim)
      end do
      call h%compute_dudt(dx)
+     call h%advance_stage(g%dtnew(ilevel))
 #endif
   endif
 
