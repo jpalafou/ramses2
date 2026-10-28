@@ -66,12 +66,15 @@ ifeq ($(DO_CR),1)
    DEFINES += -DMHD -DDO_CR -DNCRGRP=$(NCRGRP)
 endif
 NVAR_PER_MINICELL := $(NHYDRO)+$(NENER)+$(NPSCAL)+$(NMETAL)+$(NION)
-NVAR := ($(NVAR_PER_MINICELL))*$(DOFS_PER_CELL)
-ifeq ($(NDIM),2)
-NVAR := $(NVAR)*$(DOFS_PER_CELL)
-endif
-ifeq ($(NDIM),3)
-NVAR := $(NVAR)*$(DOFS_PER_CELL)*$(DOFS_PER_CELL)
+NVAR := $(NVAR_PER_MINICELL)
+ifneq ($(DOFS_PER_CELL),1)
+   NVAR := ($(NVAR))*$(DOFS_PER_CELL)
+   ifeq ($(NDIM),2)
+      NVAR := $(NVAR)*$(DOFS_PER_CELL)
+   endif
+   ifeq ($(NDIM),3)
+      NVAR := $(NVAR)*$(DOFS_PER_CELL)*$(DOFS_PER_CELL)
+   endif
 endif
 #############################################################################
 # Collect git version and Makefile options
