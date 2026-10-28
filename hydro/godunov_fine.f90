@@ -675,6 +675,9 @@ subroutine godfine1(s,ind_grid,ilevel,h)
         call h%interpolate_faces(idim)
      end do
      call compute_virtual_fluxes(h,s%h_params)
+     do idim=1,ndim
+        call h%integrate_fluxes(idim)
+     end do
 #endif
   endif
 
