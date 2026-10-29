@@ -31,6 +31,9 @@ end subroutine r_input_hydro_condinit
 subroutine input_hydro_condinit(r,g,m,ilevel)
   use amr_parameters, only: ndim, twotondim, nvector
   use hydro_parameters, only: nvar, nener
+#if DOFS_PER_CELL>1 && !defined(MHD)
+  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_per_minicell,pack_parent_cell
+#endif
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
   type(run_t)::r
@@ -43,6 +46,9 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   ! Finally convert primitive to conservative variables.
   !------------------------------------------------------------
   integer::igrid,ngrid,ind,idim,nstride,i,ivar,irad
+#if DOFS_PER_CELL>1 && !defined(MHD)
+  integer::iminicell,ioffset
+#endif
   real(kind=8),dimension(1:nvector,1:ndim)::xx
 #ifdef MHD
   real(kind=8),dimension(1:nvector,1:nvar+3-ndim)::qq
@@ -50,12 +56,69 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   real(kind=8),dimension(1:nvector,1:nvar)::qq
 #endif
   real(kind=8)::dx
+#if DOFS_PER_CELL>1 && !defined(MHD)
+  real(kind=8),dimension(1:nvector,1:nvar_per_minicell,1:nminicell)::qmini
+  real(kind=8),dimension(1:nvar_per_minicell,1:nminicell)::minicells
+  real(kind=8),dimension(1:nvar)::parent
+  real(kind=8)::dxmini,rr,vx,vy,vz,pp,ekin,erad
+#endif
 
   if(m%noct(ilevel)==0)return
 
 #ifdef HYDRO
   ! Mesh size at level ilevel in code units
   dx=r%boxlen/2**ilevel
+#if DOFS_PER_CELL>1 && !defined(MHD)
+  dxmini=dx/dble(dofs_per_cell)
+  ! Loop over grids by vector sweeps
+  do igrid=m%head(ilevel),m%tail(ilevel),nvector
+     ngrid=MIN(nvector,m%tail(ilevel)-igrid+1)
+     ! Loop over parent cells
+     do ind=1,twotondim
+        ! Initialize every virtual cell at its own center
+        do iminicell=1,nminicell
+           do idim=1,ndim
+              nstride=2**(idim-1)
+              ioffset=MOD((iminicell-1)/dofs_per_cell**(idim-1),dofs_per_cell)
+              do i=1,ngrid
+                 xx(i,idim)=(2*m%grid(igrid+i-1)%ckey(idim) &
+                      & +MOD((ind-1)/nstride,2)+(ioffset+0.5d0)/dofs_per_cell)*dx-m%skip(idim)
+              end do
+           end do
+           call condinit(r,g,xx,qq,dxmini,ngrid)
+           qmini(1:ngrid,:,iminicell)=qq(1:ngrid,1:nvar_per_minicell)
+        end do
+        ! Convert each virtual primitive state to conservative form and pack it
+        do i=1,ngrid
+           do iminicell=1,nminicell
+              rr=qmini(i,1,iminicell)
+              vx=qmini(i,2,iminicell)
+              vy=qmini(i,3,iminicell)
+              vz=qmini(i,4,iminicell)
+              pp=qmini(i,5,iminicell)
+              ekin=0.5d0*rr*(vx**2+vy**2+vz**2)
+              erad=0.0d0
+#if NENER>0
+              do irad=1,nener
+                 qmini(i,5+irad,iminicell)=qmini(i,5+irad,iminicell)/(r%gamma_rad(irad)-1.0d0)
+                 erad=erad+qmini(i,5+irad,iminicell)
+              end do
+#endif
+              qmini(i,2,iminicell)=rr*vx
+              qmini(i,3,iminicell)=rr*vy
+              qmini(i,4,iminicell)=rr*vz
+              qmini(i,5,iminicell)=pp/(r%gamma-1.0d0)+ekin+erad
+              do ivar=6+nener,nvar_per_minicell
+                 qmini(i,ivar,iminicell)=rr*qmini(i,ivar,iminicell)
+              end do
+           end do
+           minicells=qmini(i,:,:)
+           call pack_parent_cell(minicells,parent)
+           m%uold(ind,:,igrid+i-1)=parent
+        end do
+     end do
+  end do
+#else
   ! Loop over grids by vector sweeps
   do igrid=m%head(ilevel),m%tail(ilevel),nvector
      ngrid=MIN(nvector,m%tail(ilevel)-igrid+1)
@@ -99,12 +162,15 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   end do
   ! End loop over grids
 #endif
+#endif
 
+#if DOFS_PER_CELL==1 || defined(MHD)
   ! Compute initial magnetic field
   call input_hydro_vecpot(r,g,m,ilevel)
 
   ! Convert primitive to conservative
   call cons_from_prim(r,g,m,ilevel)
+#endif
 
 end subroutine input_hydro_condinit
 !#########################################################################
