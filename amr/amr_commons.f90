@@ -843,6 +843,10 @@ module amr_commons
 #ifdef HYDRO
      real(dp),allocatable,dimension(:,:,:)::uold
      real(dp),allocatable,dimension(:,:,:)::unew
+#if DOFS_PER_CELL>1
+     real(dp),allocatable,dimension(:,:,:)::u0
+     real(dp),allocatable,dimension(:,:,:)::uacc
+#endif
 #ifdef TRCFLX
      real(dp),allocatable,dimension(:,:,:)::mflux      ! Time-integrated mass flux for tracers
 #endif

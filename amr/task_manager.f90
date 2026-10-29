@@ -128,6 +128,9 @@ function worker_init(mdl) result(pst)
   use interpol_phi_module, only: r_save_phi_old
   use courant_fine_module, only: r_courant_fine
   use godunov_fine_module, only: r_godunov_fine,r_set_unew,r_set_uold,r_nimhd_fine
+#if DOFS_PER_CELL>1
+  use godunov_fine_module, only: r_update_hydro_stage
+#endif
   use cooling_fine_module, only: r_cooling_fine
   use init_xion_module, only: r_init_xion
   use star_formation_module, only: r_star_formation
@@ -272,6 +275,9 @@ function worker_init(mdl) result(pst)
   call mdl_add_service(pst%s%mdl,MDL_GODUNOV_FINE,           pst,C_FUNLOC(r_godunov_fine),1,0,"godunov_fine")
   call mdl_add_service(pst%s%mdl,MDL_SET_UNEW,               pst,C_FUNLOC(r_set_unew),1,0,"set_unew")
   call mdl_add_service(pst%s%mdl,MDL_SET_UOLD,               pst,C_FUNLOC(r_set_uold),1,0,"set_uold")
+#if DOFS_PER_CELL>1
+  call mdl_add_service(pst%s%mdl,MDL_UPDATE_HYDRO_STAGE,     pst,C_FUNLOC(r_update_hydro_stage),2,0,"update_hydro_stage")
+#endif
   call mdl_add_service(pst%s%mdl,MDL_NIMHD_FINE,             pst,C_FUNLOC(r_nimhd_fine),2,0,"nimhd_fine")
   call mdl_add_service(pst%s%mdl,MDL_COOLING_FINE,           pst,C_FUNLOC(r_cooling_fine),1,0,"cooling_fine")
   call mdl_add_service(pst%s%mdl,MDL_INIT_XION,              pst,C_FUNLOC(r_init_xion),1,0,"init_xion")

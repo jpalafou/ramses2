@@ -23,6 +23,11 @@ recursive subroutine m_amr_step(pst,ilevel,icount,done)
   use source_hydro_fine_module, only: r_source_hydro_fine
   use interpol_phi_module, only: r_save_phi_old
   use godunov_fine_module, only: r_godunov_fine,r_set_unew,r_set_uold,r_nimhd_fine
+#if DOFS_PER_CELL>1
+  use godunov_fine_module, only: r_update_hydro_stage,HYDRO_STAGE_SAVE,HYDRO_STAGE_SSP1, &
+       & HYDRO_STAGE_SSP2,HYDRO_STAGE_SSPFINAL,HYDRO_STAGE_RK1, &
+       & HYDRO_STAGE_RK2,HYDRO_STAGE_RK3,HYDRO_STAGE_RKFINAL
+#endif
   use cooling_fine_module, only: r_cooling_fine
   use newdt_fine_module, only: m_newdt_fine,r_broadcast_dt,in_broadcast_dt_t
   use movie_module, only: m_output_frame
@@ -428,7 +433,34 @@ recursive subroutine m_amr_step(pst,ilevel,icount,done)
 
         ! Hyperbolic solver
         call m_timer('hydro - godunov','start')
+#if DOFS_PER_CELL>1
+        if(.not. r%static_gas)then
+           select case(trim(r%time_integrator))
+           case('hancock')
+              call r_godunov_fine(pst,ilevel,1)
+           case('ssprk3')
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_SAVE/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_SSP1/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_SSP2/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_SSPFINAL/),2)
+           case('rk4')
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_SAVE/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_RK1/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_RK2/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_RK3/),2)
+              call r_godunov_fine(pst,ilevel,1)
+              call r_update_hydro_stage(pst,(/ilevel,HYDRO_STAGE_RKFINAL/),2)
+           end select
+        endif
+#else
         if(.not. r%static_gas) call r_godunov_fine(pst,ilevel,1)
+#endif
 
         ! Add gravity source terms to unew with half time step
         if(r%poisson.or.maxval(abs(r%constant_gravity))>0)then
