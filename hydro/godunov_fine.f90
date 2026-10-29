@@ -5,6 +5,12 @@ module godunov_fine_module
 #ifdef _METAL
   use metal_runner, only: metal_godunov, metal_set_unew, metal_set_uold
 #endif
+#if DOFS_PER_CELL>1
+  integer,parameter::HYDRO_STAGE_SAVE=0
+  integer,parameter::HYDRO_STAGE_SSP1=1,HYDRO_STAGE_SSP2=2,HYDRO_STAGE_SSPFINAL=3
+  integer,parameter::HYDRO_STAGE_RK1=4,HYDRO_STAGE_RK2=5
+  integer,parameter::HYDRO_STAGE_RK3=6,HYDRO_STAGE_RKFINAL=7
+#endif
 contains
 !###########################################################
 !###########################################################
@@ -226,6 +232,75 @@ subroutine set_uold(r,g,m,ilevel)
 #endif
 
 end subroutine set_uold
+#if DOFS_PER_CELL>1
+!###########################################################
+!###########################################################
+recursive subroutine r_update_hydro_stage(pst,input_array,input_size)
+  use mdl_module
+  use ramses_commons, only: pst_t
+  use mdl_parameters
+  implicit none
+  type(pst_t)::pst
+  integer,VALUE::input_size
+  integer,dimension(1:input_size)::input_array
+  integer::rID
+
+  if(pst%nLower>0)then
+     rID=mdl_send_request(pst%s%mdl,MDL_UPDATE_HYDRO_STAGE,pst%iUpper+1, &
+          & input_size,0,input_array)
+     call r_update_hydro_stage(pst%pLower,input_array,input_size)
+     call mdl_get_reply(pst%s%mdl,rID,0)
+  else
+     call update_hydro_stage(pst%s%m,input_array(1),input_array(2))
+  endif
+end subroutine r_update_hydro_stage
+!###########################################################
+!###########################################################
+subroutine update_hydro_stage(m,ilevel,operation)
+  use amr_parameters, only: twotondim,dp
+  use amr_commons, only: mesh_t
+  use hydro_parameters, only: nvar
+  implicit none
+  type(mesh_t)::m
+  integer,intent(in)::ilevel,operation
+  integer::igrid
+  real(dp)::du(1:twotondim,1:nvar)
+
+  !$OMP PARALLEL DO PRIVATE(du)
+  do igrid=m%head(ilevel),m%tail(ilevel)
+     select case(operation)
+     case(HYDRO_STAGE_SAVE)
+        m%u0(:,:,igrid)=m%uold(:,:,igrid)
+        m%uacc(:,:,igrid)=0.0_dp
+     case(HYDRO_STAGE_SSP1)
+        m%uold(:,:,igrid)=m%unew(:,:,igrid)
+     case(HYDRO_STAGE_SSP2)
+        m%uold(:,:,igrid)=0.75_dp*m%u0(:,:,igrid)+0.25_dp*m%unew(:,:,igrid)
+     case(HYDRO_STAGE_SSPFINAL)
+        m%unew(:,:,igrid)=m%u0(:,:,igrid)/3.0_dp+2.0_dp*m%unew(:,:,igrid)/3.0_dp
+     case(HYDRO_STAGE_RK1)
+        du=m%unew(:,:,igrid)-m%uold(:,:,igrid)
+        m%uacc(:,:,igrid)=du/6.0_dp
+        m%uold(:,:,igrid)=m%u0(:,:,igrid)+du/2.0_dp
+     case(HYDRO_STAGE_RK2)
+        du=m%unew(:,:,igrid)-m%uold(:,:,igrid)
+        m%uacc(:,:,igrid)=m%uacc(:,:,igrid)+du/3.0_dp
+        m%uold(:,:,igrid)=m%u0(:,:,igrid)+du/2.0_dp
+     case(HYDRO_STAGE_RK3)
+        du=m%unew(:,:,igrid)-m%uold(:,:,igrid)
+        m%uacc(:,:,igrid)=m%uacc(:,:,igrid)+du/3.0_dp
+        m%uold(:,:,igrid)=m%u0(:,:,igrid)+du
+     case(HYDRO_STAGE_RKFINAL)
+        du=m%unew(:,:,igrid)-m%uold(:,:,igrid)
+        m%uacc(:,:,igrid)=m%uacc(:,:,igrid)+du/6.0_dp
+        m%unew(:,:,igrid)=m%u0(:,:,igrid)+m%uacc(:,:,igrid)
+     case default
+        error stop 'Unknown hydro stage operation'
+     end select
+  end do
+  !$OMP END PARALLEL DO
+end subroutine update_hydro_stage
+#endif
 !###########################################################
 !###########################################################
 !###########################################################
