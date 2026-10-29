@@ -19,6 +19,12 @@ module hydro_commons
      real(kind=8),dimension(:,:,:,:),allocatable::dudt
      ! Candidate Runge--Kutta stage in the central virtual cells
      real(kind=8),dimension(:,:,:,:),allocatable::ustage
+     ! MUSCL-Hancock workspace on the virtual mesh
+     real(kind=8),dimension(:,:,:,:),allocatable::gvirtual,qvirtual,fxvirtual
+     real(kind=8),dimension(:,:,:),allocatable::cvirtual,divvirtual
+     real(kind=8),dimension(:,:,:,:,:),allocatable::dqvirtual,qmvirtual,qpvirtual
+     real(kind=8),dimension(:,:,:,:,:),allocatable::fmuscl,tmuscl
+     real(kind=8),dimension(:,:,:,:),allocatable::txvirtual
 #endif
      real(kind=8),dimension(:,:,:,:),allocatable::gloc
      real(kind=8),dimension(:,:,:,:),allocatable::qloc
@@ -61,6 +67,7 @@ module hydro_commons
      procedure :: integrate_fluxes => integrate_hydro_fluxes
      procedure :: compute_dudt => compute_hydro_dudt
      procedure :: advance_stage => advance_hydro_stage
+     procedure :: advance_muscl => advance_virtual_muscl
 #endif
   end type hydro_kernel_t
 
@@ -81,7 +88,7 @@ contains
     integer::nn
 #if DOFS_PER_CELL>1
     integer::ndofsy,ndofsz
-    integer::lower(1:3),upper(1:3)
+    integer::lower(1:3),upper(1:3),flux_lower(1:3),flux_upper(1:3),idim
 #endif
     class(hydro_kernel_t)::h
 
@@ -114,6 +121,42 @@ contains
          & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
          & lbound(h%uvirtual,3):ubound(h%uvirtual,3), &
          & 1:nvar_per_minicell,1:ndim))
+    allocate(h%gvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:ndim))
+    allocate(h%qvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:nprim))
+    allocate(h%cvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3)))
+    allocate(h%dqvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:nprim,1:ndim))
+    allocate(h%qmvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:nprim,1:ndim))
+    allocate(h%qpvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:nprim,1:ndim))
+    allocate(h%fxvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:nprim))
+    allocate(h%txvirtual(lbound(h%uvirtual,1):ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2):ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3):ubound(h%uvirtual,3),1:2))
+    flux_lower=(/lbound(h%uvirtual,1),lbound(h%uvirtual,2),lbound(h%uvirtual,3)/)
+    flux_upper=(/ubound(h%uvirtual,1),ubound(h%uvirtual,2),ubound(h%uvirtual,3)/)
+    do idim=1,ndim
+       flux_lower(idim)=flux_lower(idim)+2
+       flux_upper(idim)=flux_upper(idim)-2
+    end do
+    allocate(h%fmuscl(flux_lower(1):flux_upper(1),flux_lower(2):flux_upper(2), &
+         & flux_lower(3):flux_upper(3),1:nprim,1:ndim))
+    allocate(h%tmuscl(flux_lower(1):flux_upper(1),flux_lower(2):flux_upper(2), &
+         & flux_lower(3):flux_upper(3),1:2,1:ndim))
+    allocate(h%divvirtual(flux_lower(1):flux_upper(1),flux_lower(2):flux_upper(2), &
+         & flux_lower(3):flux_upper(3)))
     lower=(/dofs_per_cell*h%if1,h%jf1,h%kf1/)
     upper=(/dofs_per_cell*h%if2-1,h%jf1,h%kf1/)
     if(ndim>1)then
@@ -339,6 +382,47 @@ contains
     h%ustage=h%uvirtual(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:) &
          & +dt*h%dudt
   end subroutine advance_hydro_stage
+
+  subroutine advance_virtual_muscl(h,dx,dt,params)
+    use amr_parameters, only: ndim,dp
+    use amr_commons, only: hydro_params_t
+    use hydro_parameters, only: dofs_per_cell
+
+    class(hydro_kernel_t),intent(inout)::h
+    real(dp),intent(in)::dx,dt
+    type(hydro_params_t),intent(in)::params
+    integer::i,j,k,idim
+    integer::lower(1:3),upper(1:3),shift(1:3)
+
+    h%gvirtual=0.0_dp
+    call unsplit(h%uvirtual,h%gvirtual,h%qvirtual,h%cvirtual, &
+         & h%fmuscl,h%tmuscl,h%dqvirtual,h%qmvirtual,h%qpvirtual, &
+         & h%fxvirtual,h%txvirtual,h%divvirtual, &
+         & dx/real(dofs_per_cell,kind=dp),dt, &
+         & lbound(h%uvirtual,1),ubound(h%uvirtual,1), &
+         & lbound(h%uvirtual,2),ubound(h%uvirtual,2), &
+         & lbound(h%uvirtual,3),ubound(h%uvirtual,3), &
+         & lbound(h%fmuscl,1),ubound(h%fmuscl,1), &
+         & lbound(h%fmuscl,2),ubound(h%fmuscl,2), &
+         & lbound(h%fmuscl,3),ubound(h%fmuscl,3),params)
+
+    lower=(/lbound(h%ustage,1),lbound(h%ustage,2),lbound(h%ustage,3)/)
+    upper=(/ubound(h%ustage,1),ubound(h%ustage,2),ubound(h%ustage,3)/)
+    h%ustage=h%uvirtual(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:)
+    do idim=1,ndim
+       shift=0
+       shift(idim)=1
+       do k=lower(3),upper(3)
+          do j=lower(2),upper(2)
+             do i=lower(1),upper(1)
+                h%ustage(i,j,k,:)=h%ustage(i,j,k,:) &
+                     & +h%fmuscl(i,j,k,:,idim) &
+                     & -h%fmuscl(i+shift(1),j+shift(2),k+shift(3),:,idim)
+             end do
+          end do
+       end do
+    end do
+  end subroutine advance_virtual_muscl
 #endif
 
   function size_hydro_kernel(h)
@@ -358,6 +442,17 @@ contains
     nint=nint+size(transfer(h%faverage,(/1/)))
     nint=nint+size(transfer(h%dudt,(/1/)))
     nint=nint+size(transfer(h%ustage,(/1/)))
+    nint=nint+size(transfer(h%gvirtual,(/1/)))
+    nint=nint+size(transfer(h%qvirtual,(/1/)))
+    nint=nint+size(transfer(h%cvirtual,(/1/)))
+    nint=nint+size(transfer(h%dqvirtual,(/1/)))
+    nint=nint+size(transfer(h%qmvirtual,(/1/)))
+    nint=nint+size(transfer(h%qpvirtual,(/1/)))
+    nint=nint+size(transfer(h%fxvirtual,(/1/)))
+    nint=nint+size(transfer(h%txvirtual,(/1/)))
+    nint=nint+size(transfer(h%fmuscl,(/1/)))
+    nint=nint+size(transfer(h%tmuscl,(/1/)))
+    nint=nint+size(transfer(h%divvirtual,(/1/)))
 #endif
     nint=nint+size(transfer(h%gloc,(/1/)))
     nint=nint+size(transfer(h%qloc,(/1/)))

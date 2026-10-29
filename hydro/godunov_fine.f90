@@ -259,6 +259,9 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   use mdl_module
   use amr_parameters, only: ndim, twondim, twotondim
   use hydro_parameters, only: nvar
+#if DOFS_PER_CELL>1
+  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_per_minicell,pack_parent_cell
+#endif
   use ramses_commons, only: ramses_t
   use nbors_utils
   use hydro_commons
@@ -308,6 +311,10 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   logical::ok1,ok2,ok3
   integer::igrid,ichild
   real(kind=8)::fluxL,fluxR
+#if DOFS_PER_CELL>1
+  integer::ii,jj,kk,iminicell,ndofsy,ndofsz
+  real(kind=8)::minicells(1:nvar_per_minicell,1:nminicell),parent(1:nvar)
+#endif
 
 #ifdef MHD
   jj(1:8,1)=(/4,1,4,1,4,1,4,1/)
@@ -671,18 +678,72 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   stop
 #else
   call h%unpack_stencil()
-  do idim=1,ndim
-     call h%interpolate_faces(idim)
+  select case(trim(r%scheme))
+  case('muscl')
+     call h%advance_muscl(dx,g%dtnew(ilevel),s%h_params)
+  case('p3')
+     do idim=1,ndim
+        call h%interpolate_faces(idim)
+     end do
+     call compute_virtual_fluxes(h,s%h_params)
+     do idim=1,ndim
+        call h%integrate_fluxes(idim)
+     end do
+     call h%compute_dudt(dx)
+     call h%advance_stage(g%dtnew(ilevel))
+  case default
+     write(*,*)'Unknown hydro scheme: ',trim(r%scheme)
+     stop
+  end select
+
+  ! Pack the candidate virtual states into the local parent cells
+  ndofsy=merge(dofs_per_cell,1,ndim>1)
+  ndofsz=merge(dofs_per_cell,1,ndim>2)
+  ii0=1; jj0=0; kk0=0
+#if NDIM>1
+  jj0=1
+#endif
+#if NDIM>2
+  kk0=1
+#endif
+  do k1=k1min+kk0,k1max-kk0
+     do j1=j1min+jj0,j1max-jj0
+        do i1=i1min+ii0,i1max-ii0
+           ichild=h%childloc(i1,j1,k1)
+           do k2=k2min,k2max
+              do j2=j2min,j2max
+                 do i2=i2min,i2max
+                    ind_son=1+i2+2*j2+4*k2
+                    i3=1+2*(i1-1)+i2
+                    j3=1
+                    k3=1
+#if NDIM>1
+                    j3=1+2*(j1-1)+j2
+#endif
+#if NDIM>2
+                    k3=1+2*(k1-1)+k2
+#endif
+                    do kk=0,ndofsz-1
+                       do jj=0,ndofsy-1
+                          do ii=0,dofs_per_cell-1
+                             iminicell=1+ii+dofs_per_cell*jj+dofs_per_cell**2*kk
+                             minicells(:,iminicell)=h%ustage(dofs_per_cell*i3+ii, &
+                                  & ndofsy*j3+jj,ndofsz*k3+kk,:)
+                          end do
+                       end do
+                    end do
+                    call pack_parent_cell(minicells,parent)
+                    m%unew(ind_son,:,ichild)=parent
+                 end do
+              end do
+           end do
+        end do
+     end do
   end do
-  call compute_virtual_fluxes(h,s%h_params)
-  do idim=1,ndim
-     call h%integrate_fluxes(idim)
-  end do
-  call h%compute_dudt(dx)
-  call h%advance_stage(g%dtnew(ilevel))
 #endif
 #endif
 
+#if DOFS_PER_CELL==1
   !-----------------------------------------------
   ! Compute flux using second-order Godunov method
   !-----------------------------------------------
@@ -1338,6 +1399,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
 #endif
 
   endif
+#endif
 
   !----------------
   ! Unlock all octs
