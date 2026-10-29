@@ -57,6 +57,9 @@ end subroutine r_courant_fine
 subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   use amr_parameters, only: nvector, ndim, twotondim
   use hydro_parameters, only: nvar, nener
+#if DOFS_PER_CELL>1
+  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_state,unpack_parent_cell
+#endif
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
   type(run_t)::r
@@ -69,8 +72,14 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   ! this routine computes the maximum allowed time-step.                !
   !----------------------------------------------------------------------
   integer::ivar,idim,ind,igrid
+#if DOFS_PER_CELL>1
+  integer::iminicell
+#endif
   real(kind=8)::dt_lev,dx,vol
   real(kind=8),dimension(1:nvar)::uu
+#if DOFS_PER_CELL>1
+  real(kind=8),dimension(1:nvar_state,1:nminicell)::minicells
+#endif
   real(kind=8),dimension(1:ndim)::gg
   real(kind=8),dimension(1:6)::bb
 
@@ -89,7 +98,13 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   if(r%induction)call reset_init(r,g,m,ilevel)
 
   ! Loop over active grids by vector sweeps
+#if DOFS_PER_CELL>1
+!$OMP PARALLEL DO DEFAULT(SHARED) &
+!$OMP& PRIVATE(igrid, ind, ivar, idim, uu, bb, gg, dt_lev, iminicell, minicells) &
+!$OMP& REDUCTION(+:mass, ekin, eint, emag) REDUCTION(MIN:dt)
+#else
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(igrid, ind, ivar, idim, uu, bb, gg, dt_lev) REDUCTION(+:mass, ekin, eint, emag) REDUCTION(MIN:dt)
+#endif
   do igrid=m%head(ilevel),m%tail(ilevel)
 
      ! Loop over cells
@@ -152,8 +167,17 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
            end do
 #endif
            ! Compute CFL time-step
+#if DOFS_PER_CELL>1
+           call unpack_parent_cell(uu,minicells)
+           do iminicell=1,nminicell
+              call cmpdt(r,minicells(:,iminicell),bb,gg, &
+                   & dx/real(dofs_per_cell,kind=8),dt_lev)
+              dt=min(dt,dt_lev)
+           end do
+#else
            call cmpdt(r,uu,bb,gg,dx,dt_lev)
            dt=min(dt,dt_lev)
+#endif
 
         endif
 
