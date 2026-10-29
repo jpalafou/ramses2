@@ -228,12 +228,19 @@ end subroutine hydro_refine
 subroutine cmpdt(r,uu,bb,gg,dx,dt)
   use amr_parameters, only: ndim
   use hydro_parameters, only: nvar, nener
+#if DOFS_PER_CELL>1
+  use hydro_parameters, only: nvar_state
+#endif
   use amr_commons, only: run_t
   use const
   implicit none
   type(run_t)::r
   real(kind=8)::dx,dt
+#if DOFS_PER_CELL>1
+  real(kind=8),dimension(1:nvar_state)::uu
+#else
   real(kind=8),dimension(1:nvar)::uu
+#endif
   real(kind=8),dimension(1:ndim)::gg
   real(kind=8),dimension(1:6)::bb
 
