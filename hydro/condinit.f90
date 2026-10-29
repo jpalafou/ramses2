@@ -42,6 +42,7 @@ subroutine condinit(r,g,x,q,dx,nn)
 #define PANCAKE 9
 #define ALFVENWAVE 10
 #define COLLAPSE 11
+#define SINUS 12
 
   integer::i
   real(kind=8)::xx,yy,zz,rr,theta,pi,xcenter,ttmin,ttmax
@@ -322,6 +323,16 @@ subroutine condinit(r,g,x,q,dx,nn)
      q(i,5) = 0.1 ! Pressure
      q(i,6) = 0.1*SIN(2.0d0*pi*x(i,1)) ! By
      q(i,7) = 0.1*COS(2.0d0*pi*x(i,1)) ! Bz
+  end do
+#endif
+
+#if INIT==SINUS
+  do i=1,nn
+     q(i,1)=1.5d0+0.5d0*sin(2.0d0*pi*x(i,1))
+     q(i,2)=1.0d0
+     q(i,3)=0.0d0
+     q(i,4)=0.0d0
+     q(i,5)=1.0d0
   end do
 #endif
 
