@@ -25,13 +25,16 @@ module hydro_parameters
 #if DOFS_PER_CELL>1
   integer,parameter::nminicell=dofs_per_cell**ndim
   integer,parameter::nvar_per_minicell=nvar/nminicell
+  integer,parameter::nvar_state=nvar_per_minicell
+#else
+  integer,parameter::nvar_state=nvar
 #endif
 
 #ifdef MHD
-  integer,parameter::nprim=NVAR+3
+  integer,parameter::nprim=nvar_state+3
   integer,parameter::ie=8
 #else
-  integer,parameter::nprim=NVAR
+  integer,parameter::nprim=nvar_state
   integer,parameter::ie=5
 #endif
 

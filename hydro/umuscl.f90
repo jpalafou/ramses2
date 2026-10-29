@@ -24,7 +24,7 @@ subroutine unsplit(uin,gravin,qin,cin,flux,tmp,dq,qm,qp,fx,tx,divu,&
      & dx,dt,iu1,iu2,ju1,ju2,ku1,ku2,if1,if2,jf1,jf2,kf1,kf2,&
      & params)
   use amr_parameters, only: ndim
-  use hydro_parameters, only: nvar, nprim, nener
+  use hydro_parameters, only: nvar_state, nprim, nener
   use amr_commons, only: hydro_params_t
   use const
   implicit none
@@ -36,7 +36,7 @@ subroutine unsplit(uin,gravin,qin,cin,flux,tmp,dq,qm,qp,fx,tx,divu,&
   integer::if1,if2,jf1,jf2,kf1,kf2
 
   ! Input states
-  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar)::uin
+  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar_state)::uin
   real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:ndim)::gravin
 
   ! Output fluxes
@@ -1726,7 +1726,7 @@ subroutine ctoprim(uin,q,c,gravin, &
 #endif
      & dt,iu1,iu2,ju1,ju2,ku1,ku2,params)
   use amr_parameters, only: ndim
-  use hydro_parameters, only: nvar, nprim, nener, ie
+  use hydro_parameters, only: nvar_state, nprim, nener, ie
   use amr_commons, only: hydro_params_t
   use const
   implicit none
@@ -1734,7 +1734,7 @@ subroutine ctoprim(uin,q,c,gravin, &
   real(kind=8)::dt
   integer::iu1,iu2,ju1,ju2,ku1,ku2
   type(hydro_params_t)::params
-  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar)::uin
+  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar_state)::uin
 #ifdef MHD
   real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:6)::bin
   real(kind=8),dimension(iu1:iu2+1,ju1:ju2+1,ku1:ku2+1,1:3)::bf
@@ -1870,7 +1870,7 @@ subroutine ctoprim(uin,q,c,gravin, &
 
 #if NVAR>5+NENER
   ! Passive scalar
-  do n = 1, nvar-5-nener
+  do n = 1, nvar_state-5-nener
      do k = ku1, ku2
         do j = ju1, ju2
            do i = iu1, iu2
@@ -2350,7 +2350,7 @@ subroutine cmpdivu(q,div,dx,&
      & iu1,iu2,ju1,ju2,ku1,ku2,&
      & if1,if2,jf1,jf2,kf1,kf2)
   use amr_parameters, only: ndim
-  use hydro_parameters, only: nvar, nprim
+  use hydro_parameters, only: nprim
   use const
   implicit none
   ! This routine computes the velocity divergence at the corners of the cells.
@@ -2404,14 +2404,14 @@ subroutine cmpdiff(uin,flux,div,dt,&
      & iu1,iu2,ju1,ju2,ku1,ku2,&
      & if1,if2,jf1,jf2,kf1,kf2,difmag)
   use amr_parameters, only: ndim
-  use hydro_parameters, only: nvar, nprim, ie
+  use hydro_parameters, only: nvar_state, nprim, ie
   use const
   implicit none
   ! Add diffusive flux where flow is compressing
   real(kind=8)::dt,difmag
   integer::iu1,iu2,ju1,ju2,ku1,ku2
   integer::if1,if2,jf1,jf2,kf1,kf2
-  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar)::uin
+  real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:nvar_state)::uin
 #ifdef MHD
   real(kind=8),dimension(iu1:iu2,ju1:ju2,ku1:ku2,1:6)::bin
 #endif
