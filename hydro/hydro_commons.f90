@@ -67,7 +67,9 @@ module hydro_commons
      procedure :: integrate_fluxes => integrate_hydro_fluxes
      procedure :: compute_dudt => compute_hydro_dudt
      procedure :: advance_stage => advance_hydro_stage
+#ifndef MHD
      procedure :: advance_muscl => advance_virtual_muscl
+#endif
 #endif
   end type hydro_kernel_t
 
@@ -383,6 +385,7 @@ contains
          & +dt*h%dudt
   end subroutine advance_hydro_stage
 
+#ifndef MHD
   subroutine advance_virtual_muscl(h,dx,dt,params)
     use amr_parameters, only: ndim,dp
     use amr_commons, only: hydro_params_t
@@ -423,6 +426,7 @@ contains
        end do
     end do
   end subroutine advance_virtual_muscl
+#endif
 #endif
 
   function size_hydro_kernel(h)
