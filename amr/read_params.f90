@@ -326,7 +326,9 @@ subroutine m_read_params(pst)
   real(kind=8)::smallc=1.d-10
   real(kind=8)::smallr=1.d-10
   character(LEN=10)::scheme='muscl'
+#if DOFS_PER_CELL>1
   character(LEN=10)::time_integrator='hancock'
+#endif
   character(LEN=10)::riemann='llf'
   character(LEN=10)::riemann2d='none'
   logical ::induction=.false.
@@ -667,7 +669,11 @@ subroutine m_read_params(pst)
   namelist/hydro_params/gamma,courant_factor,smallr,smallc &
        & ,slope_type,slope_mag_type,difmag,etamag,eta_ohm,eta_ad,nimhd_solver,nimhd_split,nimhd_courant,nimhd_alpha,gamma_rad &
        & ,dual_energy,T2_fix,induction,entropy,sgs_turb,equilibrium_sgs,riemann,riemann2d,constant_gravity &
+#if DOFS_PER_CELL>1
        & ,niter_riemann,scheme,time_integrator,switch_llf_dmin,switch_llf_pmin,smagorinsky_lilly_constant
+#else
+       & ,niter_riemann,scheme,switch_llf_dmin,switch_llf_pmin,smagorinsky_lilly_constant
+#endif
   ! Grid refinement parameters
   namelist/refine_params/x_refine,y_refine,z_refine,r_refine &
        & ,a_refine,b_refine,exp_refine,jeans_refine,mass_cut_refine &
@@ -1380,12 +1386,6 @@ subroutine m_read_params(pst)
      write(*,*)'Error: DOFS_PER_CELL>1 does not yet support hydro source terms'
      nml_ok=.false.
   endif
-#else
-  if(trim(time_integrator)/='hancock')then
-     write(*,*)'Error: unsupported time_integrator: ',trim(time_integrator)
-     write(*,*)'Only hancock is currently implemented'
-     nml_ok=.false.
-  endif
 #endif
 
   ! Check that lightcone parameters are consistent
@@ -1728,7 +1728,9 @@ subroutine m_read_params(pst)
   s%r%ichem=ichem
   s%r%iturb=iturb
   s%r%scheme=scheme
+#if DOFS_PER_CELL>1
   s%r%time_integrator=time_integrator
+#endif
   s%r%constant_gravity=constant_gravity
 #ifndef MHD
   if(riemann=='llf')s%r%riemann=solver_llf

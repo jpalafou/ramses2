@@ -6,7 +6,7 @@ This namelist is called &HYDRO_PARAMS, and is used to specify runtime parameters
 | `gamma_rad=1.333`    |  `Real array` | Adiabatic exponent for each non-thermal pressure EOS (used only if `NENER>1`) |
 | `courant_factor=0.5` |  `Real`    | CFL number for time step control (less than 1) |
 | `scheme='muscl'` | `Character LEN=10` | Spatial hydro scheme. Use `muscl` for the second-order method or, when compiled with `DOFS_PER_CELL>1`, `p3` for the unlimited fourth-order method. |
-| `time_integrator='hancock'` | `Character LEN=10` | Hydro time integrator. `muscl` uses `hancock`; `p3` supports `ssprk3` and `rk4`. |
+| `time_integrator='hancock'` | `Character LEN=10` | Hydro time integrator for `DOFS_PER_CELL>1`. `muscl` uses `hancock`; `p3` supports `ssprk3` and `rk4`. |
 | `constant_gravity=0.0`|  `Real array` | 3 components of the constant gravitational acceleration in code units in case `poisson=.false.` |
 | `smallr=1d-10 `      |  `Real`    | Minimum density to prevent floating exceptions |
 | `smallc=1d-10 `      |  `Real`    | Minimum sound speed to prevent floating exceptions |
