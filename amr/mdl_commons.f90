@@ -76,6 +76,9 @@ module mdl_parameters
      enumerator::MDL_GODUNOV_FINE
      enumerator::MDL_SET_UNEW
      enumerator::MDL_SET_UOLD
+#if DOFS_PER_CELL>1
+     enumerator::MDL_UPDATE_HYDRO_STAGE
+#endif
      enumerator::MDL_NIMHD_FINE
      enumerator::MDL_GRAVITY_HYDRO_FINE
      enumerator::MDL_SOURCE_HYDRO_FINE
