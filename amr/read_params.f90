@@ -1326,11 +1326,67 @@ subroutine m_read_params(pst)
 #endif
   endif
 
+#if DOFS_PER_CELL>1
+  select case(trim(scheme))
+  case('muscl')
+     if(trim(time_integrator)/='hancock')then
+        write(*,*)'Error: scheme=muscl requires time_integrator=hancock'
+        nml_ok=.false.
+     endif
+  case('p3')
+     if(trim(time_integrator)/='ssprk3'.and.trim(time_integrator)/='rk4')then
+        write(*,*)'Error: scheme=p3 requires time_integrator=ssprk3 or rk4'
+        nml_ok=.false.
+     endif
+     if(difmag>0)then
+        write(*,*)'Error: scheme=p3 does not support difmag'
+        nml_ok=.false.
+     endif
+  case default
+     write(*,*)'Error: unsupported high-order hydro scheme: ',trim(scheme)
+     nml_ok=.false.
+  end select
+  if(nlevelmax/=levelmin)then
+     write(*,*)'Error: DOFS_PER_CELL>1 currently requires a uniform mesh'
+     nml_ok=.false.
+  endif
+  if(any(.not.periodic(1:ndim)).or.nbound>0)then
+     write(*,*)'Error: DOFS_PER_CELL>1 currently requires periodic boundaries'
+     nml_ok=.false.
+  endif
+  if(nrestart==0.and.any(len_trim(initfile(levelmin:nlevelmax))>0))then
+     write(*,*)'Error: DOFS_PER_CELL>1 currently requires analytic initial conditions'
+     nml_ok=.false.
+  endif
+#ifdef MHD
+  write(*,*)'Error: DOFS_PER_CELL>1 does not support MHD'
+  nml_ok=.false.
+#endif
+#if NENER>0
+  write(*,*)'Error: DOFS_PER_CELL>1 does not support non-thermal energies'
+  nml_ok=.false.
+#endif
+#if defined(_CUDA) || defined(_METAL)
+  write(*,*)'Error: DOFS_PER_CELL>1 currently requires the CPU hydro solver'
+  nml_ok=.false.
+#endif
+  if(poisson.or.maxval(abs(constant_gravity))>0.or.turb.or.rt.or.cr.or. &
+       & star.or.sink.or.induction)then
+     write(*,*)'Error: DOFS_PER_CELL>1 does not yet support coupled source terms'
+     nml_ok=.false.
+  endif
+  if(cooling.or.cooling_ism.or.isothermal.or.neq_chem.or.sgs_turb.or. &
+       & (entropy.and.dual_energy>=0))then
+     write(*,*)'Error: DOFS_PER_CELL>1 does not yet support hydro source terms'
+     nml_ok=.false.
+  endif
+#else
   if(trim(time_integrator)/='hancock')then
      write(*,*)'Error: unsupported time_integrator: ',trim(time_integrator)
      write(*,*)'Only hancock is currently implemented'
      nml_ok=.false.
   endif
+#endif
 
   ! Check that lightcone parameters are consistent
   if (lightcone) then
