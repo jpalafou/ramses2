@@ -185,7 +185,9 @@ module amr_commons
      real(kind=8)::dual_energy=-1
      real(kind=8)::T2_fix=0d0
      character(LEN=10)::scheme='muscl'
+#if DOFS_PER_CELL>1
      character(LEN=10)::time_integrator='hancock'
+#endif
      integer::riemann=0
      integer::riemann2d=0
      real(kind=8)::switch_llf_dmin=-1
