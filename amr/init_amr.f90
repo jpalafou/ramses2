@@ -141,6 +141,12 @@ subroutine init_amr(r,g,m,type)
      allocate(m%unew(1:twotondim,1:nvar,1:m%ngridmax+m%ncachemax))
      m%uold=0d0
      m%unew=0d0
+#if DOFS_PER_CELL>1
+     allocate(m%u0(1:twotondim,1:nvar,1:m%ngridmax+m%ncachemax))
+     allocate(m%uacc(1:twotondim,1:nvar,1:m%ngridmax+m%ncachemax))
+     m%u0=0d0
+     m%uacc=0d0
+#endif
 #endif
 #ifdef MHD
      allocate(m%bold(1:twotondim,1:6,1:m%ngridmax+m%ncachemax))
