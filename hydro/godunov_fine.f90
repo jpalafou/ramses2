@@ -1578,7 +1578,7 @@ contains
        ln=4; lt1=2; lt2=3
     end select
 
-    ! Existing Riemann solvers use packed NVAR-sized work arrays
+    ! Rotate the physical state into the Riemann solver's normal direction
     qleft=0.0d0
     qright=0.0d0
     qleft(1:5)=(/ql(1),ql(ln),ql(lt1),ql(lt2),ql(5)/)
