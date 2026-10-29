@@ -40,6 +40,9 @@ end subroutine r_output_hydro
 subroutine output_hydro(s,filename)
   use amr_parameters, only: ndim, twotondim, flen, nbuf_io
   use hydro_parameters, only: nvar, nprim, nener,ie
+#if DOFS_PER_CELL>1
+  use hydro_parameters, only: nvar_state
+#endif
   use ramses_commons, only: ramses_t, open_file, close_file
   use posix_io, only: pio_t, pio_open, pio_write, pio_close
   use iso_c_binding, only: c_loc
@@ -133,7 +136,11 @@ subroutine output_hydro(s,filename)
 #endif
 #if NVAR>5+NENER
            ! Compute passive scalars
+#if DOFS_PER_CELL>1
+           do n=1,nvar_state-5-nener
+#else
            do n=1,nvar-5-nener
+#endif
               qold(ind,ie+nener+n)=uold(ind,5+nener+n)/dd
            end do
 #endif
@@ -251,6 +258,9 @@ end subroutine backup_hydro
 subroutine file_descriptor_hydro(r,filename,write_bkp_file)
   use amr_parameters, only: ndim, flen
   use hydro_parameters, only: nvar, nener, nprim, ie, nion
+#if DOFS_PER_CELL>1
+  use hydro_parameters, only: nvar_state
+#endif
   use amr_commons, only: run_t
   implicit none
   type(run_t)::r
@@ -292,10 +302,21 @@ subroutine file_descriptor_hydro(r,filename,write_bkp_file)
      end do
 #endif
 #if NVAR>5+NENER
+#if DOFS_PER_CELL>1
+     ! Physical passive scalars in the parent average
+     do ivar=6+nener,nvar_state
+        write(ilun,'("variable #",I2,": density_scalar_",I0)')ivar,ivar-5-nener
+     end do
+     ! Packed differences between minicells and the parent average
+     do ivar=nvar_state+1,nvar
+        write(ilun,'("variable #",I2,": packed_deviation_",I0)')ivar,ivar-nvar_state
+     end do
+#else
      ! Passive scalars
      do ivar=6+nener,nvar
         write(ilun,'("variable #",I2,": density_scalar_",I0)')ivar,ivar-5-nener
      end do
+#endif
 #endif
 #ifdef MHD
      ivar=nvar+1
