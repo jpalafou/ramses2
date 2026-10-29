@@ -273,7 +273,9 @@ subroutine output_compil(filename)
   use amr_commons
   use pm_commons
   use hydro_commons
+#if DOFS_PER_CELL>1
   use hydro_parameters, only: dofs_per_cell
+#endif
   implicit none
   real(dp)::real_size
   character(LEN=flen)::filename
@@ -300,8 +302,10 @@ subroutine output_compil(filename)
 #ifdef HYDRO
   write(mystring,*)nvar
   write(11,'(" NVAR = ",A)')adjustl(mystring)
+#if DOFS_PER_CELL>1
   write(mystring,*)dofs_per_cell
   write(11,'(" DOFS_PER_CELL = ",A)')adjustl(mystring)
+#endif
   write(mystring,*)nener
   write(11,'(" NENER = ",A)')adjustl(mystring)
   write(11,'(" HYDRO = 1")')
