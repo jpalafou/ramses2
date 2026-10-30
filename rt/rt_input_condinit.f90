@@ -163,10 +163,10 @@ subroutine rt_region_condinit(r,g,x,q,dx,nn,ilevel)
            xn=1.0; yn=1.0; zn=1.0
            xn=max(1.0-abs(x(i,1)-r%rt_reg_x_center(k))/dx,0.0d0)
 #if NDIM>1
-           yn=max(1.0-abs(x(i,2)-r%rt_reg_x_center(k))/dx,0.0d0)
+           yn=max(1.0-abs(x(i,2)-r%rt_reg_y_center(k))/dx,0.0d0)
 #endif
 #if NDIM>2
-           zn=max(1.0-abs(x(i,3)-r%rt_reg_x_center(k))/dx,0.0d0)
+           zn=max(1.0-abs(x(i,3)-r%rt_reg_z_center(k))/dx,0.0d0)
 #endif
            weight=xn*yn*zn
            if(weight.gt.0) then
@@ -359,10 +359,10 @@ subroutine rt_source_regions_sweep(r,g,x,q,dx,dt,nn,ilevel)
            xn=1.0; yn=1.0; zn=1.0
            xn=max(1.0-abs(x(i,1)-r%rt_src_x_center(k))/dx,0.0d0)
 #if NDIM>1
-           yn=max(1.0-abs(x(i,2)-r%rt_src_x_center(k))/dx,0.0d0)
+           yn=max(1.0-abs(x(i,2)-r%rt_src_y_center(k))/dx,0.0d0)
 #endif
 #if NDIM>2
-           zn=max(1.0-abs(x(i,3)-r%rt_src_x_center(k))/dx,0.0d0)
+           zn=max(1.0-abs(x(i,3)-r%rt_src_z_center(k))/dx,0.0d0)
 #endif
            weight=xn*yn*zn
            if(weight.gt.0) then
