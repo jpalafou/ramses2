@@ -399,6 +399,8 @@ subroutine output_params(r,g,m,filename)
   write(ilun)r%gamma
   ! Write RNG latest seed
   write(ilun)r%seed
+  write(ilun)g%safe_mode(1:r%nlevelmax)
+  write(ilun)g%safe_mode_countdown(1:r%nlevelmax)
   ! Write cpu boundaries
   write(ilun)nhilbert
   do ilevel=r%levelmin,r%nlevelmax
@@ -431,6 +433,8 @@ subroutine input_params(mdl,r,g,filename,nfile_file,ncpu_file,levelmin_file,nlev
   integer::noutput_min,nlevelmax_min
   real(kind=8)::mass_sph_file,gamma_file
   real(kind=8),allocatable,dimension(:)::tout,aout,dtold,dtnew
+  logical,allocatable,dimension(:)::safe_mode
+  integer,allocatable,dimension(:)::safe_mode_countdown
   character(LEN=flen)::fileloc
 
   if(r%verbose)write(*,*)'Entering input_params'
@@ -481,6 +485,17 @@ subroutine input_params(mdl,r,g,filename,nfile_file,ncpu_file,levelmin_file,nlev
   read(ilun)gamma_file
   ! Read RNG seed to restart the stream
   read(ilun)r%seed
+  allocate(safe_mode(1:nlevelmax_file))
+  allocate(safe_mode_countdown(1:nlevelmax_file))
+  read(ilun)safe_mode(1:nlevelmax_file)
+  read(ilun)safe_mode_countdown(1:nlevelmax_file)
+  if(nlevelmax_min>0)then
+     g%safe_mode(1:nlevelmax_min)=safe_mode(1:nlevelmax_min)
+     g%safe_mode_countdown(1:nlevelmax_min)=safe_mode_countdown(1:nlevelmax_min)
+  endif
+  deallocate(safe_mode,safe_mode_countdown)
+  ! A smaller mg_safe_mode_reset in the new namelist shortens the remaining safe mode
+  if(r%mg_safe_mode_reset>0)g%safe_mode_countdown=min(g%safe_mode_countdown,r%mg_safe_mode_reset)
   close(ilun)
   ! For cosmo runs only, as mass_sph is not set in the namelist
   if(r%cosmo)r%mass_sph=mass_sph_file

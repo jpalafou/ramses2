@@ -350,6 +350,7 @@ subroutine m_read_params(pst)
   logical :: gravity_test=.false. ! Use file rho_ana.f90 to test the Poisson solers.
   real(kind=8)::epsilon=1.0D-4    ! Convergence criterion
   integer :: nvcycle = -1         ! Desired number of V-cycles
+  integer :: mg_safe_mode_reset = 0 ! Number of solves a level stays in safe mode (0 = never reset)
   real(kind=8),dimension(1:10)::gravity_params=0.0 ! Gravity parameters
   integer :: gravity_type=0 ! Type of gravity calculations (see user guide)
   integer :: cic_levelmax=0 ! Maximum level for CIC dark matter interpolation
@@ -615,7 +616,7 @@ subroutine m_read_params(pst)
   namelist/amr_params/levelmin,levelmax,ngridmax,ncachemax,ngridtot &
        & ,npartmax,nparttot,nexpand,boxlen
   ! Poisson solver parameters
-  namelist/poisson_params/epsilon,nvcycle,gravity_type,gravity_params &
+  namelist/poisson_params/epsilon,nvcycle,mg_safe_mode_reset,gravity_type,gravity_params &
        & ,cg_levelmin,cic_levelmax,fast_solver,gravity_test &
        & ,part_mass_deposition_scheme,part_dep_algo,part_force_interpolation_scheme &
        & ,star_mass_deposition_scheme,star_dep_algo,star_force_interpolation_scheme &
@@ -1567,6 +1568,7 @@ subroutine m_read_params(pst)
   s%r%gravity_test=gravity_test
   s%r%epsilon=epsilon
   s%r%nvcycle=nvcycle
+  s%r%mg_safe_mode_reset=mg_safe_mode_reset
   s%r%gravity_type=gravity_type
   s%r%gravity_params=gravity_params
   s%r%cic_levelmax=cic_levelmax

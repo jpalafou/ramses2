@@ -134,6 +134,15 @@ subroutine multigrid(pst,ilevel,icount)
   ! Initiate solve at fine level
   ! ---------------------------------------------------------------------
 
+  ! Switch back to normal mode after mg_safe_mode_reset solves in safe mode
+  if(pst%s%g%safe_mode(ilevel).and.pst%s%r%mg_safe_mode_reset>0)then
+     pst%s%g%safe_mode_countdown(ilevel)=pst%s%g%safe_mode_countdown(ilevel)-1
+     if(pst%s%g%safe_mode_countdown(ilevel)<=0)then
+        if(pst%s%r%verbose)print *,'CAUTION: Switching back to normal MG mode for level ',ilevel
+        pst%s%g%safe_mode(ilevel)=.false.
+     end if
+  end if
+
   iter = 0
   err = 1.0d0
   main_iteration_loop: do
@@ -209,6 +218,7 @@ subroutine multigrid(pst,ilevel,icount)
      if(err > last_err*SAFE_FACTOR .and. (.not. pst%s%g%safe_mode(ilevel))) then
         if(pst%s%r%verbose)print *,'CAUTION: Switching to safe MG mode for level ',ilevel
         pst%s%g%safe_mode(ilevel) = .true.
+        pst%s%g%safe_mode_countdown(ilevel) = pst%s%r%mg_safe_mode_reset
      end if
 
   end do main_iteration_loop
