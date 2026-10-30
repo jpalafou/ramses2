@@ -755,7 +755,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   call h%unpack_stencil()
   select case(trim(r%scheme))
   case('muscl')
-     call h%advance_muscl(dx,g%dtnew(ilevel),s%h_params)
+     call advance_virtual_muscl(h,dx,g%dtnew(ilevel),s%h_params)
   case('p3')
      do idim=1,ndim
         call h%interpolate_faces(idim)
@@ -1511,6 +1511,52 @@ subroutine godfine1(s,ind_grid,ilevel,h)
 
 end subroutine godfine1
 #if DOFS_PER_CELL>1 && !defined(MHD)
+!###########################################################
+!###########################################################
+!###########################################################
+!###########################################################
+subroutine advance_virtual_muscl(h,dx,dt,params)
+  use amr_parameters, only: ndim,dp
+  use amr_commons, only: hydro_params_t
+  use hydro_commons, only: hydro_kernel_t
+  use hydro_parameters, only: dofs_per_cell
+  implicit none
+
+  type(hydro_kernel_t),intent(inout)::h
+  real(dp),intent(in)::dx,dt
+  type(hydro_params_t),intent(in)::params
+  integer::i,j,k,idim
+  integer::lower(1:3),upper(1:3),shift(1:3)
+
+  h%gvirtual=0.0_dp
+  call unsplit(h%uvirtual,h%gvirtual,h%qvirtual,h%cvirtual, &
+       & h%fmuscl,h%tmuscl,h%dqvirtual,h%qmvirtual,h%qpvirtual, &
+       & h%fxvirtual,h%txvirtual,h%divvirtual, &
+       & dx/real(dofs_per_cell,kind=dp),dt, &
+       & lbound(h%uvirtual,1),ubound(h%uvirtual,1), &
+       & lbound(h%uvirtual,2),ubound(h%uvirtual,2), &
+       & lbound(h%uvirtual,3),ubound(h%uvirtual,3), &
+       & lbound(h%fmuscl,1),ubound(h%fmuscl,1), &
+       & lbound(h%fmuscl,2),ubound(h%fmuscl,2), &
+       & lbound(h%fmuscl,3),ubound(h%fmuscl,3),params)
+
+  lower=(/lbound(h%ustage,1),lbound(h%ustage,2),lbound(h%ustage,3)/)
+  upper=(/ubound(h%ustage,1),ubound(h%ustage,2),ubound(h%ustage,3)/)
+  h%ustage=h%uvirtual(lower(1):upper(1),lower(2):upper(2),lower(3):upper(3),:)
+  do idim=1,ndim
+     shift=0
+     shift(idim)=1
+     do k=lower(3),upper(3)
+        do j=lower(2),upper(2)
+           do i=lower(1),upper(1)
+              h%ustage(i,j,k,:)=h%ustage(i,j,k,:) &
+                   & +h%fmuscl(i,j,k,:,idim) &
+                   & -h%fmuscl(i+shift(1),j+shift(2),k+shift(3),:,idim)
+           end do
+        end do
+     end do
+  end do
+end subroutine advance_virtual_muscl
 !###########################################################
 !###########################################################
 !###########################################################
