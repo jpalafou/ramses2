@@ -1,0 +1,38 @@
+This namelist advects a diagonal sinusoidal density wave through a periodic 2D domain.
+The density varies from 1 to 2, while both velocity components and pressure are uniformly 1.
+Compile the code with:
+make NDIM=2 HYDRO=1 INIT=SINUS
+
+To run the code:
+bin/ramses2d namelist/sinus2d.nml
+
+&RUN_PARAMS
+hydro=.true.
+nstepmax=10
+ncontrol=1
+/
+
+&AMR_PARAMS
+levelmin=6
+levelmax=6
+ngridmax=2000
+nexpand=1
+boxlen=1.0
+/
+
+&INIT_PARAMS
+nregion=0
+/
+
+&OUTPUT_PARAMS
+foutput=10
+tout=1.0
+/
+
+&HYDRO_PARAMS
+gamma=1.4
+courant_factor=0.8
+slope_type=2
+riemann='hllc'
+scheme='muscl'
+/

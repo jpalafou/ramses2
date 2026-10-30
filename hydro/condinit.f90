@@ -328,10 +328,9 @@ subroutine condinit(r,g,x,q,dx,nn)
 
 #if INIT==SINUS
   do i=1,nn
-     q(i,1)=1.5d0+0.5d0*sin(2.0d0*pi*x(i,1))
-     q(i,2)=1.0d0
-     q(i,3)=0.0d0
-     q(i,4)=0.0d0
+     q(i,1)=1.5d0+0.5d0*sin(2.0d0*pi*sum(x(i,1:ndim)))
+     q(i,2:4)=0.0d0
+     q(i,2:ndim+1)=1.0d0
      q(i,5)=1.0d0
   end do
 #endif
