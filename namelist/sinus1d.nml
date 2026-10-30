@@ -1,7 +1,7 @@
 This namelist advects a sinusoidal density wave through a periodic 1D domain.
 The density varies from 1 to 2, while velocity and pressure are uniform at 1.
 Compile the code with:
-make NDIM=1 HYDRO=1 INIT=SINUS
+make NDIM=1 HYDRO=1 INIT=SINUS DOFS_PER_CELL=1
 
 To run the code:
 bin/ramses1d namelist/sinus1d.nml
