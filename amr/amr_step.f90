@@ -119,7 +119,7 @@ recursive subroutine m_amr_step(pst,ilevel,icount,done)
      !---------------------------
      ! Write output files to disk
      !---------------------------
-     if(r%foutput>0)then
+     if(r%foutput>0.and..not.g%first_coarse_restart)then
         if(mod(g%nstep_coarse,r%foutput)==0.or.g%aexp>=r%aout(g%iout).or.g%t>=r%tout(g%iout))then
            ! Call the clump finder
            if(r%clump_finder)then
