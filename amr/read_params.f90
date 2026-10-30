@@ -797,8 +797,8 @@ subroutine m_read_params(pst)
 #ifdef HYDRO
   write(*,'(" Using hydro solver with nvar = ",I0)')nvar
   ! Check nvar is not too small
-  if(nvar<5)then
-     write(*,*)'You should have: nvar>=5'
+  if(nvar_state<5)then
+     write(*,*)'You should have: nvar_state>=5'
      write(*,'(" Please recompile with -DNVAR=5")')
      call mdl_abort(s%mdl)
   endif
@@ -1168,8 +1168,8 @@ subroutine m_read_params(pst)
   ! Check for non-thermal energies
   !--------------------------------------------------
 #if NENER>0
-  if(nvar<5+nener)then
-     write(*,*)'Error: non-thermal energy need nvar >= 5+nener'
+  if(nvar_state<5+nener)then
+     write(*,*)'Error: non-thermal energy need nvar_state >= 5+nener'
      write(*,*)'Modify NENER and recompile'
      nml_ok=.false.
   endif
@@ -1178,8 +1178,8 @@ subroutine m_read_params(pst)
   !--------------------------------------------------
   ! Check for metals
   !--------------------------------------------------
-  if(metal.and.nvar<6)then
-     write(*,*)'Error: metal=.true. need nvar >= 6'
+  if(metal.and.nvar_state<6)then
+     write(*,*)'Error: metal=.true. need nvar_state >= 6'
      write(*,*)'Modify NVAR and recompile'
      nml_ok=.false.
   endif
@@ -1187,8 +1187,8 @@ subroutine m_read_params(pst)
   !--------------------------------------------------
   ! Check for entropy
   !--------------------------------------------------
-  if(entropy.and.nvar<6)then
-     write(*,*)'Error: entropy=.true. need nvar >= 6'
+  if(entropy.and.nvar_state<6)then
+     write(*,*)'Error: entropy=.true. need nvar_state >= 6'
      write(*,*)'Modify NVAR and recompile'
      nml_ok=.false.
   endif
@@ -1221,13 +1221,13 @@ subroutine m_read_params(pst)
   !--------------------------------------------------
   ! Check for sgs_turb
   !--------------------------------------------------
-  if(sgs_turb.and.iturb>nvar)then
+  if(sgs_turb.and.iturb>nvar_state)then
      write(*,*)'Error: sgs_turb=.true. needs nvar >= ',iturb
-     write(*,*)'Currently nvar=',nvar,' but iturb=',iturb
+     write(*,*)'Currently nvar_state=',nvar_state,' but iturb=',iturb
      write(*,*)'Modify NVAR and recompile'
      nml_ok=.false.
   endif
-  if(hydro.and.(nvar>5)) then
+  if(hydro.and.(nvar_state>5)) then
      write(*,'(A50)')"__________________________________________________"
      write(*,*) 'Hydro var extra indices:'
 #if NENER>0
@@ -1236,7 +1236,7 @@ subroutine m_read_params(pst)
      if(entropy) write(*,*) '   ientropy = ',ientropy
      if(metal)   write(*,*) '   imetal   = ',imetal
      if(sgs_turb)write(*,*) '   iturb    = ',iturb
-     if(ichem.LE.nvar)then
+     if(ichem.LE.nvar_state)then
                  write(*,*) '   ichem    = ',ichem
      endif
      write(*,'(A50)')"__________________________________________________"
@@ -1302,9 +1302,9 @@ subroutine m_read_params(pst)
      iIons = ichem
      ichem = ichem + icount
      ! Check we have enough passive scalar
-     if(iIons+iCount-1 .gt. nvar) then
+     if(iIons+iCount-1 .gt. nvar_state) then
         write(*,*) 'Something wrong with NVAR.'
-        write(*,*) 'Have NVAR=',nvar
+        write(*,*) 'Have NVAR per state=',nvar_state
         write(*,*) 'Should have NVAR=',iIons+iCount-1
         write(*,*) 'STOPPING!'
         call mdl_abort(s%mdl)
