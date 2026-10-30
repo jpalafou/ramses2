@@ -50,12 +50,13 @@ module core_params_module
 
 contains
 
-  subroutine read_core_params(lun,s,star,nml_ok)
+  subroutine read_core_params(lun,s,star,levelmin,nlevelmax,nml_ok)
     use ramses_commons, only: ramses_t
     implicit none
     integer,intent(in)::lun
     type(ramses_t)::s
     logical,intent(in)::star
+    integer,intent(in)::levelmin,nlevelmax
     logical,intent(inout)::nml_ok
   namelist/core_params/core,ncoremax,ncoretot,core_form,core_to_star &
        & ,core_refine,output_core_clump,core_merge &
@@ -108,6 +109,9 @@ contains
      write(*,*)'Error in the namelist:'
      write(*,*)'core_to_star_mass should be >0 when core_to_star is enabled'
      nml_ok=.false.
+  end if
+  if(core_to_star .and. .not.core_refine .and. nlevelmax>levelmin .and. s%g%myid==1)then
+     write(*,*)'WARNING: without core_refine, a core converts into stars only if the mesh around it reaches the finest level'
   end if
   ! LP criteria need a clump-finder threshold.
   if(core_form .and. core_use_LP_criteria .and. &

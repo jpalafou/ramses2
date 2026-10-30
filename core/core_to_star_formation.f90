@@ -92,7 +92,7 @@ subroutine star_formation_from_core(s,r,g,star,core,ilevel,mstar_loc)
   nstar_loc=0
   allocate(birth_core_index(max(1,core%npart)),birth_mass(max(1,core%npart)))
   birth_core_index=0
-  do i=1,core%npart
+  do i=core%headp(ilevel),core%tailp(ilevel)
      mnew=mstar_unit*dble(int(core%mp(i)/mstar_unit))
      if(mnew>0d0)then
         nstar_loc=nstar_loc+1

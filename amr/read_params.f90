@@ -1098,7 +1098,7 @@ subroutine m_read_params(pst)
      if(ndustmax==0)dust=.false.
   endif
 
-  call read_core_params(1,s,star,nml_ok)
+  call read_core_params(1,s,star,levelmin,nlevelmax,nml_ok)
   close(1)
 
   !-----------------

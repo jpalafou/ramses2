@@ -32,12 +32,12 @@ Cores need a build with `NDIM=3` and `HYDRO=1`. On GPU, cores run on a single MP
 | `core_include_magnetic_support`        | `logical`    | `.true.`      | Include the magnetic term in the support of the energy criterion.                                   |
 | `core_use_contracting_criteria`        | `logical`    | `.false.`     | Require the clump to be contracting (dI/dt < 0).                                                    |
 | `core_use_contracting_all_axes`        | `logical`    | `.false.`     | Require the clump to contract along all its principal axes.                                         |
-| `core_refine`                          | `logical`    | `.false.`     | Refine the mesh around cores, as `sink_refine` does for sinks.                                      |
+| `core_refine`                          | `logical`    | `.false.`     | Refine the mesh around cores, as `sink_refine` does for sinks, so that they reach the level where `core_to_star` converts them. |
 | `output_core_clump`                    | `logical`    | `.false.`     | Write the `core_clump.*` catalogue of the clumps found for core formation. Not on GPU yet.          |
 | `core_merge`                           | `logical`    | `.false.`     | Activate core-core merging.                                                                         |
 | `core_merger_search_order`             | `integer`    | 4             | Two cores merge if they are closer than this number of cells at their level.                        |
 | `core_merging_timescale`               | `real`       | 1000          | Two cores merge only if both are younger than this age in years. If <= 0, cores do not merge.       |
-| `core_to_star`                         | `logical`    | `.false.`     | Turn core mass into star particles at the finest level the mesh may reach (`nlevelmax`, or lower in cosmological runs with `aexp_lock_refine`); use `core_refine` so cores reach it. Needs star particles (`star=.true.` in `&STAR_PARAMS`): without them it does nothing. |
+| `core_to_star`                         | `logical`    | `.false.`     | Turn core mass into star particles at the finest level the mesh may reach (`nlevelmax`, or lower in cosmological runs with `aexp_lock_refine`). A core converts only once its cell is at that level: use `core_refine` so cores reach it (without it, a warning is printed at start-up when `levelmax > levelmin`). Needs star particles (`star=.true.` in `&STAR_PARAMS`): without them it does nothing. |
 | `core_to_star_mass`                    | `real`       | 100           | Mass of the star particles created by `core_to_star`, in solar masses.                              |
 
 ## `&CORE_ACCRETION_PARAMS`: accretion and retirement

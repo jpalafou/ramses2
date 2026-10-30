@@ -65,11 +65,11 @@ attributes(global) subroutine core_retire_kernel(core_xp, core_vp, core_mp, core
 
 end subroutine core_retire_kernel
 
-!> Flag the cores that hold at least one star mass unit.
-attributes(global) subroutine core_to_star_flag_kernel(core_mp, flag, ncore, mstar_unit)
+!> Flag the cores of rows head to tail that hold at least one star mass unit.
+attributes(global) subroutine core_to_star_flag_kernel(core_mp, flag, ncore, head, tail, mstar_unit)
   real(kind=dp), device :: core_mp(*)
   integer(kind=4), device :: flag(*)
-  integer(kind=4), intent(in), value :: ncore
+  integer(kind=4), intent(in), value :: ncore, head, tail
   real(kind=8), intent(in), value :: mstar_unit
 
   integer :: i
@@ -77,7 +77,7 @@ attributes(global) subroutine core_to_star_flag_kernel(core_mp, flag, ncore, mst
   i = (blockIdx%x - 1) * blockDim%x + threadIdx%x
   if (i > ncore) return
 
-  flag(i) = merge(1, 0, mstar_unit*dble(int(core_mp(i)/mstar_unit)) > 0d0)
+  flag(i) = merge(1, 0, i >= head .and. i <= tail .and. mstar_unit*dble(int(core_mp(i)/mstar_unit)) > 0d0)
 
 end subroutine core_to_star_flag_kernel
 
@@ -249,7 +249,7 @@ subroutine gpu_core_to_star(sim, ilevel, mstar_loc)
 
   ! Flag the cores that form a star and number them in row order
   call core_to_star_flag_kernel<<<num_blocks, num_threads>>>(core_mp, prefix_sum, &
-       & ncore, mstar_unit)
+       & ncore, sim%core%headp(ilevel), sim%core%tailp(ilevel), mstar_unit)
   call GPU_Error_Check(__FILE__, __LINE__)
   head_idx = 1
   call gpu_scan(prefix_sum, head_idx, ncore, nnew_d)
