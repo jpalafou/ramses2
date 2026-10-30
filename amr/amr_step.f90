@@ -136,6 +136,19 @@ recursive subroutine m_amr_step(pst,ilevel,icount,done)
            call m_dump_all(pst,.false.)
         endif
      endif
+     !------------------------
+     ! Write lightcone to disk
+     !------------------------
+     if (r%lightcone.and..not.g%first_coarse_restart) then
+        call m_timer('lightcone','start')
+#ifdef _CUDA
+           call r_transfer_grid_host(pst)
+#endif
+#ifdef _METAL
+           call r_transfer_grid_host(pst)
+#endif
+        call m_output_lightcone(pst)
+     endif
      !----------------------------
      ! Write restart files to disk
      !----------------------------
@@ -163,13 +176,6 @@ recursive subroutine m_amr_step(pst,ilevel,icount,done)
            call m_dump_all(pst,.true.)
            bkp_last_done=.true.
         endif
-     endif
-     !------------------------
-     ! Write lightcone to disk
-     !------------------------
-     if (r%lightcone) then
-        call m_timer('lightcone','start')
-        call m_output_lightcone(pst)
      endif
   endif
 
