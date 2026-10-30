@@ -38,8 +38,7 @@ subroutine m_dump_all(pst,write_bkp_file)
    & core=>pst%s%core, &
    & trac=>pst%s%trac,dust=>pst%s%dust,mdl=>pst%s%mdl)
 
-  if(g%nstep_coarse==g%nstep_coarse_old.and.g%nstep_coarse>0)return
-  if(g%nstep_coarse==0.and.r%nrestart>0)return
+  if(g%first_coarse_restart)return
 
   if(r%verbose)then
      write(*,*)'Entering dump_all'

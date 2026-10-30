@@ -104,6 +104,7 @@ subroutine adaptive_loop(pst)
 999 format(' Level ',I0,' has ',I0,' grids (',I0,',',I0,',',I0,')')
 
   g%nstep_coarse_old=g%nstep_coarse
+  if(r%nrestart>0)g%nstep_coarse_old=g%nstep_coarse-1
 
 #ifdef _CUDA
   ! Copy entire grid from host to device
