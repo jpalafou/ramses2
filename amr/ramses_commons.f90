@@ -48,7 +48,7 @@ contains
 !#########################################################################
 !#########################################################################
 subroutine open_file(s,filename,nskip,ilun)
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nprim,dofs_per_cell
   use rt_parameters, only: nrtvar
   use cr_parameters, only: ncruvar
   use amr_parameters, only: ndim,flen,twotondim
@@ -137,11 +137,7 @@ subroutine open_file(s,filename,nskip,ilun)
      else
         open(unit=ilun,file=fileloc,access="stream",action="write",form='unformatted')
         write(ilun)ndim
-#ifdef MHD
-        if(index(filename,'hydro').NE.0)write(ilun)nvar+3
-#else
-        if(index(filename,'hydro').NE.0)write(ilun)nvar
-#endif
+        if(index(filename,'hydro').NE.0)write(ilun)nprim*dofs_per_cell**ndim
         if(index(filename,'grav').NE.0)write(ilun)ndim+1
         if(index(filename,'peak').NE.0)write(ilun)3
         if(index(filename,'rt').NE.0)write(ilun)nrtvar
@@ -168,11 +164,8 @@ subroutine open_file(s,filename,nskip,ilun)
      do ilevel=r%levelmin,r%nlevelmax
         nskip(ilevel)=iskip
         if(index(filename,'amr').NE.0)iskip=iskip+(4*ndim+4)*noct(ilevel)
-#ifdef MHD
-        if(index(filename,'hydro').NE.0)iskip=iskip+(4*twotondim*(nvar+3))*noct(ilevel)
-#else
-        if(index(filename,'hydro').NE.0)iskip=iskip+(4*twotondim*nvar)*noct(ilevel)
-#endif
+        if(index(filename,'hydro').NE.0)iskip=iskip+ &
+             & (4*twotondim*nprim*dofs_per_cell**ndim)*noct(ilevel)
         if(index(filename,'grav').NE.0)iskip=iskip+(4*twotondim*(ndim+1))*noct(ilevel)
         if(index(filename,'peak').NE.0)iskip=iskip+(4*twotondim*3)*noct(ilevel)
         if(index(filename,'rt').NE.0)iskip=iskip+(4*twotondim*nrtvar)*noct(ilevel)
@@ -210,7 +203,7 @@ end subroutine open_file
 !#########################################################################
 !#########################################################################
 subroutine close_file(s,filename,nskip,ilun)
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nprim,dofs_per_cell
   use rt_parameters, only: nrtvar
   use cr_parameters, only: ncruvar
   use amr_parameters, only: ndim,flen,twotondim
@@ -258,11 +251,8 @@ subroutine close_file(s,filename,nskip,ilun)
      do ilevel=r%levelmin,r%nlevelmax
         iskip=nskip(ilevel)
         if(index(filename,'amr').NE.0)iskip=iskip+(4*ndim+4)*int(m%noct(ilevel),kind=8)
-#ifdef MHD
-        if(index(filename,'hydro').NE.0)iskip=iskip+(4*twotondim*(nvar+3))*int(m%noct(ilevel),kind=8)
-#else
-        if(index(filename,'hydro').NE.0)iskip=iskip+(4*twotondim*nvar)*int(m%noct(ilevel),kind=8)
-#endif
+        if(index(filename,'hydro').NE.0)iskip=iskip+ &
+             & (4*twotondim*nprim*dofs_per_cell**ndim)*int(m%noct(ilevel),kind=8)
         if(index(filename,'grav').NE.0)iskip=iskip+(4*twotondim*(ndim+1))*int(m%noct(ilevel),kind=8)
         if(index(filename,'peak').NE.0)iskip=iskip+(4*twotondim*3)*int(m%noct(ilevel),kind=8)
         if(index(filename,'rt').NE.0)iskip=iskip+(4*twotondim*nrtvar)*int(m%noct(ilevel),kind=8)

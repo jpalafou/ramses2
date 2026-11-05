@@ -39,9 +39,9 @@ end subroutine r_output_hydro
 !###################################################
 subroutine output_hydro(s,filename)
   use amr_parameters, only: ndim, twotondim, flen, nbuf_io
-  use hydro_parameters, only: nvar, nprim, nener,ie
+  use hydro_parameters, only: nvar, nprim, nener,ie,dofs_per_cell,nvar_state
 #if DOFS_PER_CELL>1
-  use hydro_parameters, only: nvar_state
+  use hydro_parameters, only: nminicell,unpack_parent_cell
 #endif
   use ramses_commons, only: ramses_t, open_file, close_file
   use posix_io, only: pio_t, pio_open, pio_write, pio_close
@@ -52,13 +52,17 @@ subroutine output_hydro(s,filename)
   !-----------------------------------
   ! Output hydro data in file
   !-----------------------------------
-  integer::ilevel,igrid,ilun,irad,n,ind,i,nchunk
+  integer::ilevel,igrid,ilun,irad,n,ind,i,nchunk,iminicell
   integer(kind=8),dimension(s%r%levelmin:s%r%nlevelmax)::nskip
   integer(kind=8)::offset,nbyte
-  real(kind=4),allocatable,dimension(:,:,:),target::qbuf
+  real(kind=4),allocatable,dimension(:,:,:,:),target::qbuf
   type(pio_t)::f
-  real(kind=8),dimension(1:twotondim,1:nprim)::qold
+  real(kind=8),dimension(1:twotondim,1:nprim,1:dofs_per_cell**ndim)::qold
   real(kind=8),dimension(1:twotondim,1:nvar)::uold
+  real(kind=8),dimension(1:nvar_state)::ustate
+#if DOFS_PER_CELL>1
+  real(kind=8),dimension(1:nvar_state,1:nminicell)::minicells
+#endif
   real(kind=8),dimension(1:twotondim,1:6)::bold
   real(kind=8)::vx,vy,vz,bx,by,bz
   real(kind=8)::etot,ekin,emag,erad,dd,pp
@@ -68,8 +72,8 @@ subroutine output_hydro(s,filename)
 #ifdef HYDRO
 
   ! Buffer octs to write in large chunks
-  nchunk=max(1,nbuf_io/(4*twotondim*nprim))
-  allocate(qbuf(1:twotondim,1:nprim,1:nchunk))
+  nchunk=max(1,nbuf_io/(4*twotondim*nprim*dofs_per_cell**ndim))
+  allocate(qbuf(1:twotondim,1:nprim,1:dofs_per_cell**ndim,1:nchunk))
 
   call open_file(s,filename,nskip,ilun)
   call pio_open(f,ilun)
@@ -87,68 +91,78 @@ subroutine output_hydro(s,filename)
 #endif
         do ind=1,twotondim
 
-           ! Compute density
-           dd=uold(ind,1)
+#if DOFS_PER_CELL>1
+           call unpack_parent_cell(uold(ind,:),minicells)
+#endif
+           do iminicell=1,dofs_per_cell**ndim
+#if DOFS_PER_CELL>1
+              ustate=minicells(:,iminicell)
+#else
+              ustate=uold(ind,:)
+#endif
+              ! Compute density
+              dd=ustate(1)
 
-           ! Compute velocity
-           vx=uold(ind,2)/dd
-           vy=uold(ind,3)/dd
-           vz=uold(ind,4)/dd
+              ! Compute velocity
+              vx=ustate(2)/dd
+              vy=ustate(3)/dd
+              vz=ustate(4)/dd
 
-           ! Compute kinetic energy
-           ekin=0.5*dd*(vx**2+vy**2+vz**2)
-           emag=0.0
+              ! Compute kinetic energy
+              ekin=0.5*dd*(vx**2+vy**2+vz**2)
+              emag=0.0
 #ifdef MHD
-           ! Compute cell-centered magnetic field
-           bx=0.5*(bold(ind,1)+bold(ind,4))
-           by=0.5*(bold(ind,2)+bold(ind,5))
-           bz=0.5*(bold(ind,3)+bold(ind,6))
-           emag=0.5*(bx**2+by**2+bz**2)
+              ! Compute cell-centered magnetic field
+              bx=0.5*(bold(ind,1)+bold(ind,4))
+              by=0.5*(bold(ind,2)+bold(ind,5))
+              bz=0.5*(bold(ind,3)+bold(ind,6))
+              emag=0.5*(bx**2+by**2+bz**2)
 #endif
-           erad=0.0
+              erad=0.0
 #if NENER>0
-           ! Compute non-thermal energy
-           do irad=1,nener
-              erad=erad+uold(ind,5+irad)
-           end do
+              ! Compute non-thermal energy
+              do irad=1,nener
+                 erad=erad+ustate(5+irad)
+              end do
 #endif
-           ! Compute pressure
-           etot=uold(ind,5)
-           pp=(r%gamma-1)*(etot-ekin-emag-erad)
+              ! Compute pressure
+              etot=ustate(5)
+              pp=(r%gamma-1)*(etot-ekin-emag-erad)
 
-           ! Store primitive variables
-           qold(ind,1)=dd
-           qold(ind,2)=vx
-           qold(ind,3)=vy
-           qold(ind,4)=vz
-           qold(ind,5)=pp
+              ! Store primitive variables
+              qold(ind,1,iminicell)=dd
+              qold(ind,2,iminicell)=vx
+              qold(ind,3,iminicell)=vy
+              qold(ind,4,iminicell)=vz
+              qold(ind,5,iminicell)=pp
 #ifdef MHD
-           qold(ind,6)=bx
-           qold(ind,7)=by
-           qold(ind,8)=bz
-           ! If one want to output instead the divergence in 2D
-           ! qold(ind,8)=abs(bold(ind,5)-bold(ind,2)+bold(ind,4)-bold(ind,1))/r%boxlen/0.5**ilevel
+              qold(ind,6,iminicell)=bx
+              qold(ind,7,iminicell)=by
+              qold(ind,8,iminicell)=bz
+              ! If one want to output instead the divergence in 2D
+              ! qold(ind,8)=abs(bold(ind,5)-bold(ind,2)+bold(ind,4)-bold(ind,1))/r%boxlen/0.5**ilevel
 #endif
 #if NENER>0
-           do irad=1,nener
-              qold(ind,ie+irad)=(r%gamma_rad(irad)-1)*uold(ind,5+irad)
-           end do
+              do irad=1,nener
+                 qold(ind,ie+irad,iminicell)=(r%gamma_rad(irad)-1)*ustate(5+irad)
+              end do
 #endif
 #if NVAR>5+NENER
-           ! Compute passive scalars
+              ! Compute passive scalars
 #if DOFS_PER_CELL>1
-           do n=1,nvar_state-5-nener
+              do n=1,nvar_state-5-nener
 #else
-           do n=1,nvar-5-nener
+              do n=1,nvar-5-nener
 #endif
-              qold(ind,ie+nener+n)=uold(ind,5+nener+n)/dd
+                 qold(ind,ie+nener+n,iminicell)=ustate(5+nener+n)/dd
+              end do
+#endif
            end do
-#endif
         end do
         i=i+1
-        qbuf(:,:,i)=real(qold,kind=4)
+        qbuf(:,:,:,i)=real(qold,kind=4)
         if(i==nchunk.or.igrid==m%tail(ilevel))then
-           nbyte=int(4*twotondim*nprim,kind=8)*i
+           nbyte=int(4*twotondim*nprim*dofs_per_cell**ndim,kind=8)*i
            call pio_write(f,c_loc(qbuf),nbyte,offset)
            offset=offset+nbyte
            i=0
