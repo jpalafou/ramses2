@@ -1349,6 +1349,10 @@ subroutine m_read_params(pst)
 #endif
   endif
 
+  if(dofs_per_cell<1.or.iand(dofs_per_cell,dofs_per_cell-1)/=0)then
+     write(*,*)'Error: DOFS_PER_CELL must be a power of two'
+     nml_ok=.false.
+  endif
 #if DOFS_PER_CELL>1
   select case(trim(scheme))
   case('muscl')

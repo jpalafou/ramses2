@@ -7,8 +7,11 @@ anything until asked. It is shared by ramses2hdf5.py and other readers.
 File layouts (stream access, native endianness):
     amr.NNNNN       int32 ndim, levelmin, nlevelmax, noct(levelmin:nlevelmax)
                     then for each level and each oct: int32 ckey(ndim), int32 refined
-    hydro.NNNNN     int32 ndim, nvar, levelmin, nlevelmax, noct(levelmin:nlevelmax)
-    (grav, rt, cr)  then for each level: float32 (noct, nvar, 2**ndim)
+    hydro.NNNNN     int32 ndim, nvar*dofs**ndim, levelmin, nlevelmax,
+                    noct(levelmin:nlevelmax), then for each level:
+                    float32 (noct, nvar*dofs**ndim, 2**ndim)
+    (grav, rt, cr)  int32 ndim, nvar, levelmin, nlevelmax, noct(...), then
+                    for each level: float32 (noct, nvar, 2**ndim)
     <prefix>.NNNNN  int32 ndim, npart, then each field column in header order
                     (prefix = part, star, sink, tree, trac, dust, core)
 
@@ -32,11 +35,12 @@ Examples:
     # GridFile: octs and cell values of one level of one file
     ilevel = o.levelmin+2
     ckey, bits = o.grid["amr"][0].read_amr(ilevel)
-    refined = ramses_io.unpack_refined(bits,o.ndim)         # (noct, 2**ndim) bool
-    icell = ramses_io.cell_index(ckey,o.ndim)               # (noct, 2**ndim, ndim)
-    x = (icell+0.5)*o.info["boxlen"]/2**ilevel              # cell centers
-    hydro = o.grid["hydro"][0].read_level(ilevel)           # (noct, nvar, 2**ndim)
-    rho = hydro[:,o.var_names["hydro"].index("density"),:]  # (noct, 2**ndim)
+    refined = ramses_io.unpack_refined(bits,o.ndim,o.dofs_per_cell)
+    icell = ramses_io.cell_index(ckey,o.ndim,o.dofs_per_cell)
+    fine_level = ilevel+int(np.log2(o.dofs_per_cell))
+    x = (icell+0.5)*o.info["boxlen"]/2**fine_level          # cell centers
+    hydro = o.grid["hydro"][0].read_level(ilevel) # (noct, nvar, (2*dofs)**ndim)
+    rho = hydro[:,o.var_names["hydro"].index("density"),:]
     rho_leaf = rho[~refined]
 
     # PartFile: one field of every file of a particle type
@@ -119,10 +123,33 @@ def rd_part_fields(filename):
         fields.append((name,np.dtype(dtype),int(ncomp)))
     return fields
 
-def unpack_refined(bits, ndim):
-    """Convert the refined bit mask of each oct into a (noct, 2**ndim) bool array."""
+def _cell_layout(ndim, dofs_per_cell=1):
+    """Fine-cell coordinates and parent-cell indices within an oct."""
+    nside = 2*dofs_per_cell
+    ind = np.arange(nside**ndim)
+    coord = np.array([(ind//nside**idim)%nside for idim in range(ndim)],
+                     dtype=np.int32).T
+    parent = np.sum((coord//dofs_per_cell)*2**np.arange(ndim),axis=1)
+    return coord, parent
+
+def _unpack_hydro_dofs(data, ndim, dofs_per_cell):
+    """Unpack (parent cell, minicell) data into Cartesian cells of an oct."""
+    if dofs_per_cell==1:
+        return data
+    nmini = dofs_per_cell**ndim
+    if data.shape[1]%nmini:
+        raise ValueError("hydro nvar is not divisible by DOFS_PER_CELL**ndim")
+    nvar = data.shape[1]//nmini
+    coord, parent = _cell_layout(ndim,dofs_per_cell)
+    mini = np.sum((coord%dofs_per_cell)*dofs_per_cell**np.arange(ndim),axis=1)
+    packed = data.reshape(len(data),nmini,nvar,2**ndim)
+    return packed[:,mini,:,parent].transpose(1,2,0)
+
+def unpack_refined(bits, ndim, dofs_per_cell=1):
+    """Convert refined bits into a bool array, repeated over any minicells."""
     ind = np.arange(2**ndim)
-    return ((bits[:,None] >> ind) & 1).astype(bool)
+    refined = ((bits[:,None] >> ind) & 1).astype(bool)
+    return refined[:,_cell_layout(ndim,dofs_per_cell)[1]]
 
 def cell_offsets(ndim):
     """Offset (0 or 1) of each cell of an oct along each dimension, as a
@@ -130,17 +157,20 @@ def cell_offsets(ndim):
     ind = np.arange(2**ndim)
     return np.array([(ind>>idim)&1 for idim in range(ndim)],dtype=np.int32).T
 
-def cell_index(ckey, ndim):
+def cell_index(ckey, ndim, dofs_per_cell=1):
     """Integer index at their level of the cells of each oct, as a
-    (noct, 2**ndim, ndim) array. The cell center is (icell+0.5)*boxlen/2**level."""
-    return 2*ckey[:,None,:]+cell_offsets(ndim)[None,:,:]
+    (noct, (2*dofs_per_cell)**ndim, ndim) array. The returned level is the
+    AMR level plus log2(dofs_per_cell)."""
+    coord, _ = _cell_layout(ndim,dofs_per_cell)
+    return 2*dofs_per_cell*ckey[:,None,:]+coord[None,:,:]
 
 class GridFile:
     """One amr, hydro, grav, rt or cr file: header and byte offset of every level block."""
 
-    def __init__(self, filename, component):
+    def __init__(self, filename, component, dofs_per_cell=1):
         self.filename = filename
         self.component = component
+        self.dofs_per_cell = dofs_per_cell if component=="hydro" else 1
         head = np.fromfile(filename,dtype=np.int32,count=4)
         self.ndim = int(head[0])
         if component=="amr":
@@ -149,7 +179,11 @@ class GridFile:
             self.nlevelmax = int(head[2])
             hsize = 12
         else:
-            self.nvar = int(head[1])
+            self.nvar_file = int(head[1])
+            nmini = self.dofs_per_cell**self.ndim
+            if self.nvar_file%nmini:
+                raise ValueError("hydro nvar is not divisible by DOFS_PER_CELL**ndim")
+            self.nvar = self.nvar_file//nmini
             self.levelmin = int(head[2])
             self.nlevelmax = int(head[3])
             hsize = 16
@@ -169,7 +203,7 @@ class GridFile:
         if self.component=="amr":
             return self.ndim*ckey_dtype.itemsize+4
         else:
-            return 4*self.nvar*2**self.ndim
+            return 4*self.nvar_file*2**self.ndim
 
     def read_amr(self, ilevel):
         """Return ckey (noct, ndim) and the refined bit mask (noct,) of a level."""
@@ -179,12 +213,15 @@ class GridFile:
         return data["ckey"], data["refined"]
 
     def read_level(self, ilevel):
-        """Return the cell data of a level as a (noct, nvar, 2**ndim) float32 array."""
+        """Return (noct, nvar, (2*dofs_per_cell)**ndim) cell data."""
         n = self.noct[ilevel]
         if n==0:
-            return np.zeros((0,self.nvar,2**self.ndim),dtype=np.float32)
-        return np.memmap(self.filename,dtype=np.float32,mode="r",
-                         offset=self.offset[ilevel],shape=(n,self.nvar,2**self.ndim))
+            return np.zeros((0,self.nvar,(2*self.dofs_per_cell)**self.ndim),
+                            dtype=np.float32)
+        data = np.memmap(self.filename,dtype=np.float32,mode="r",
+                         offset=self.offset[ilevel],
+                         shape=(n,self.nvar_file,2**self.ndim))
+        return _unpack_hydro_dofs(data,self.ndim,self.dofs_per_cell)
 
 class PartFile:
     """One particle file: number of particles and byte offset of every field column."""
@@ -230,10 +267,15 @@ class Output:
     def __init__(self, path):
         self.path = path
         self.info = rd_info_txt(os.path.join(path,"info.txt"))
+        compilation = os.path.join(path,"compilation.txt")
+        self.compilation = rd_info_txt(compilation) if os.path.exists(compilation) else {}
         self.ndim = self.info["ndim"]
         self.nfile = self.info["nfile"]
         self.levelmin = self.info["levelmin"]
         self.nlevelmax = self.info["levelmax"]
+        self.dofs_per_cell = int(self.compilation.get("DOFS_PER_CELL",1))
+        if self.dofs_per_cell<1 or self.dofs_per_cell&(self.dofs_per_cell-1):
+            raise ValueError("DOFS_PER_CELL must be a power of two")
         self.rt_info = self._rd_optional_info("rt_info.txt")
         self.cr_info = self._rd_optional_info("cr_info.txt")
 
@@ -242,7 +284,8 @@ class Output:
         for comp in grid_components:
             if not os.path.exists(self._filename(comp,1)):
                 continue
-            files = [GridFile(self._filename(comp,ifile),comp) for ifile in range(1,self.nfile+1)]
+            files = [GridFile(self._filename(comp,ifile),comp,self.dofs_per_cell)
+                     for ifile in range(1,self.nfile+1)]
             for g in files:
                 if (g.ndim,g.levelmin,g.nlevelmax)!=(self.ndim,self.levelmin,self.nlevelmax):
                     raise ValueError("Header of "+g.filename+" does not match info.txt")
@@ -378,24 +421,27 @@ def _collect(ndim, boxlen, keys, level, icell, values):
     return LeafCells(ndim,boxlen,np.concatenate(level),np.concatenate(icell),
                      {k: np.concatenate(values[k]) for k in keys})
 
-def _leaf_cells_octs(ndim, boxlen, keys, levels, chunks, box):
+def _leaf_cells_octs(ndim, boxlen, keys, levels, chunks, box, dofs_per_cell=1):
     """Extract leaf cells from chunks of octs. chunks(ilevel) yields
     (ckey, refined bits, read) where read(comp, var, start, stop) returns
     the (stop-start, 2**ndim) values of a range of octs of the chunk."""
     level, icell, values = [], [], {k: [] for k in keys}
+    level_offset = int(np.log2(dofs_per_cell))
     for ilevel in levels:
         for ckey, bits, read in chunks(ilevel):
             if len(ckey)==0:
                 continue
-            ic = cell_index(ckey,ndim)
-            mask = _select_cells(ic,~unpack_refined(bits,ndim),ilevel,boxlen,box)
+            ic = cell_index(ckey,ndim,dofs_per_cell)
+            fine_level = ilevel+level_offset
+            mask = _select_cells(ic,~unpack_refined(bits,ndim,dofs_per_cell),
+                                 fine_level,boxlen,box)
             rows = np.nonzero(mask.any(axis=1))[0]
             if len(rows)==0:
                 continue
             start, stop = rows[0], rows[-1]+1
             mask = mask[start:stop]
             icell.append(ic[start:stop][mask])
-            level.append(np.full(len(icell[-1]),ilevel,dtype=np.int8))
+            level.append(np.full(len(icell[-1]),fine_level,dtype=np.int8))
             for comp, var in keys:
                 values[comp,var].append(read(comp,var,start,stop)[mask])
     return _collect(ndim,boxlen,keys,level,icell,values)
@@ -412,7 +458,8 @@ def _leaf_cells_native(path, fields, levels, box):
                 ivar = o.var_names[comp].index(var)
                 return o.grid[comp][ifile].read_level(ilevel)[start:stop,ivar,:]
             yield ckey, bits, read
-    return _leaf_cells_octs(o.ndim,o.info["boxlen"],keys,levels,chunks,box)
+    return _leaf_cells_octs(o.ndim,o.info["boxlen"],keys,levels,chunks,box,
+                            o.dofs_per_cell)
 
 def _h5_keys(f, fields):
     # Variables in file order (h5py lists them alphabetically)
