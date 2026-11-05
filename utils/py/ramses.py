@@ -522,13 +522,49 @@ def rd_amr(nout,**kwargs):
 
     return amr
 
+def rd_dofs_per_cell(filename):
+    """Read DOFS_PER_CELL from compilation.txt, defaulting to one."""
+    if not os.path.exists(filename):
+        return 1
+    with open(filename) as f:
+        for line in f:
+            if line.split("=",1)[0].strip()=="DOFS_PER_CELL":
+                dofs_per_cell = int(line.split("=",1)[1])
+                if dofs_per_cell<1 or dofs_per_cell&(dofs_per_cell-1):
+                    raise ValueError("DOFS_PER_CELL must be a power of two")
+                return dofs_per_cell
+    return 1
+
+def _cell_layout(ndim,dofs_per_cell):
+    """Return fine-cell coordinates and their parent-cell indices within an oct."""
+    nside = 2*dofs_per_cell
+    ind = np.arange(nside**ndim)
+    coord = np.array([(ind//nside**idim)%nside for idim in range(ndim)]).T
+    parent = np.sum((coord//dofs_per_cell)*2**np.arange(ndim),axis=1)
+    return coord, parent
+
+def _unpack_hydro_dofs(data,ndim,dofs_per_cell):
+    """Unpack (parent cell, minicell) data into Cartesian cells of an oct."""
+    if dofs_per_cell==1:
+        return data
+    nmini = dofs_per_cell**ndim
+    if data.shape[1]%nmini:
+        raise ValueError("hydro nvar is not divisible by DOFS_PER_CELL**ndim")
+    nvar = data.shape[1]//nmini
+    nparent = 2**ndim
+    coord, parent = _cell_layout(ndim,dofs_per_cell)
+    mini = np.sum((coord%dofs_per_cell)*dofs_per_cell**np.arange(ndim),axis=1)
+    packed = data.reshape(len(data),nmini,nvar,nparent)
+    return packed[:,mini,:,parent].transpose(1,2,0)
+
 class Hydro:
-    def __init__(self,nndim,nnvar):
+    def __init__(self,nndim,nnvar,dofs_per_cell=1):
         self.level = 0
         self.ngrid = 0
         self.ndim = nndim
         self.nvar = nnvar
-        self.u = np.empty(shape=(nnvar,2**nndim,0))
+        self.dofs_per_cell = dofs_per_cell
+        self.u = np.empty(shape=(nnvar,(2*dofs_per_cell)**nndim,0))
 
 def rd_hydro(nout,**kwargs):
 
@@ -560,7 +596,13 @@ def rd_hydro(nout,**kwargs):
     else:
         filename = path+"/output_"+car1+"/"+prefix+".00001"
 
-    nvar = np.fromfile(filename,dtype=np.int32,count=1,offset=4)[0]
+    nvar_file = np.fromfile(filename,dtype=np.int32,count=1,offset=4)[0]
+    dofs_per_cell = 1 if backup or prefix!="hydro" else rd_dofs_per_cell(
+        path+"/output_"+car1+"/compilation.txt")
+    nmini = dofs_per_cell**ndim
+    if nvar_file%nmini:
+        raise ValueError("hydro nvar is not divisible by DOFS_PER_CELL**ndim")
+    nvar = nvar_file//nmini
 
     txt = "Found nvar="+str(nvar)
     print(txt)
@@ -568,7 +610,7 @@ def rd_hydro(nout,**kwargs):
 
     hydro=[]
     for ilevel in range(0,nlevelmax):
-        hydro.append(Hydro(ndim,nvar))
+        hydro.append(Hydro(ndim,nvar,dofs_per_cell))
         hydro[ilevel].level = ilevel
 
     numbl = np.zeros([nlevelmax,ncpu],dtype=np.int64)
@@ -590,11 +632,12 @@ def rd_hydro(nout,**kwargs):
 
     # Allocating memory
     for ilevel in range(0,nlevelmax):
-        hydro[ilevel].u = np.zeros([nvar,2**ndim,hydro[ilevel].ngrid],dtype=float)
+        hydro[ilevel].u = np.zeros([nvar,(2*dofs_per_cell)**ndim,
+                                    hydro[ilevel].ngrid],dtype=float)
         hydro[ilevel].nvar = nvar
 
     iskip = np.zeros(nlevelmax, dtype=int)
-    nvartot = nvar*2**ndim
+    nvartot = nvar_file*2**ndim
 
     # Reading and storing data
     for icpu in cpulist:
@@ -615,12 +658,13 @@ def rd_hydro(nout,**kwargs):
             else:
                 transfer = np.fromfile(filename,dtype=np.float32,count=nvartot*ncache,offset=offset)
 
-            transfer = np.reshape(transfer,(ncache,nvar,2**ndim))
+            transfer = np.reshape(transfer,(ncache,nvar_file,2**ndim))
+            transfer = _unpack_hydro_dofs(transfer,ndim,dofs_per_cell)
             transfer = np.transpose(transfer,(1,2,0))
 
             # Store cell hydro variables
             for ivar in range(0,nvar):
-                for ind in range(0,2**ndim):
+                for ind in range(0,(2*dofs_per_cell)**ndim):
                     hydro[ilevel].u[ivar,ind,iskip[ilevel]:iskip[ilevel]+ncache] = transfer[ivar,ind]
 
             if(backup):
@@ -896,6 +940,7 @@ def rd_cell(nout,**kwargs):
     nlevelmax = len(a)
     ndim = a[0].ndim
     nvar = h[0].nvar
+    dofs_per_cell = h[0].dofs_per_cell
     boxlen = a[0].boxlen
 
     car1 = str(nout).zfill(5)
@@ -907,20 +952,13 @@ def rd_cell(nout,**kwargs):
     if(len(fields) != nvar):
         raise ValueError(prefix+"_header.txt lists "+str(len(fields))+" variables, the data has nvar="+str(nvar))
 
-    offset = np.zeros([ndim,2**ndim])
-    if (ndim == 1):
-        offset[0,:]=[-0.5,0.5]
-    if (ndim == 2):
-        offset[0,:]=[-0.5,0.5,-0.5,0.5]
-        offset[1,:]=[-0.5,-0.5,0.5,0.5]
-    if (ndim == 3):
-        offset[0,:]=[-0.5,0.5,-0.5,0.5,-0.5,0.5,-0.5,0.5]
-        offset[1,:]=[-0.5,-0.5,0.5,0.5,-0.5,-0.5,0.5,0.5]
-        offset[2,:]=[-0.5,-0.5,-0.5,-0.5,0.5,0.5,0.5,0.5]
+    coord, parent = _cell_layout(ndim,dofs_per_cell)
+    ncell_per_oct = len(parent)
+    level_offset = int(np.log2(dofs_per_cell))
 
     ncell = 0
     for ilev in range(0,nlevelmax):
-        ncell = ncell + np.count_nonzero(a[ilev].refined == False)
+        ncell += np.count_nonzero(a[ilev].refined[parent] == False)
 
     print("Found",ncell,"leaf cells")
     print("Extracting leaf cells...")
@@ -936,16 +974,17 @@ def rd_cell(nout,**kwargs):
     icell = 0
     for ilev in range(0,nlevelmax):
         dx = 0.5*boxlen/2**ilev
-        for ind in range(0,2**ndim):
-            mask = a[ilev].refined[ind] == False
+        for ind in range(0,ncell_per_oct):
+            mask = a[ilev].refined[parent[ind]] == False
             nc = np.count_nonzero(mask)
             if (nc > 0):
                 for idim in range(0,ndim):
-                    c.x[idim, icell:icell+nc] = (2*a[ilev].xg[idim,mask]+1+offset[idim,ind])*dx
+                    c.x[idim, icell:icell+nc] = (2*a[ilev].xg[idim,mask]
+                        +(coord[ind,idim]+0.5)/dofs_per_cell)*dx
                 for ivar in range(0,nvar):
                     c.u[ivar, icell:icell+nc] = h[ilev].u[ivar,ind,mask]
-                c.dx[icell:icell+nc] = dx
-                c.level[icell:icell+nc] = ilev
+                c.dx[icell:icell+nc] = dx/dofs_per_cell
+                c.level[icell:icell+nc] = ilev+level_offset
                 icell = icell + nc
 
     # Filtering cells
