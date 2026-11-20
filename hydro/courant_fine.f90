@@ -58,7 +58,7 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   use amr_parameters, only: nvector, ndim, twotondim
   use hydro_parameters, only: nvar, nener
 #if DOFS_PER_CELL>1
-  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_state,unpack_parent_cell
+  use hydro_parameters, only: dofs_per_cell,nvar_state
 #endif
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
@@ -73,12 +73,13 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   !----------------------------------------------------------------------
   integer::ivar,idim,ind,igrid
 #if DOFS_PER_CELL>1
-  integer::iminicell
+  integer::iminicell,ioffset
 #endif
   real(kind=8)::dt_lev,dx,vol
-  real(kind=8),dimension(1:nvar)::uu
 #if DOFS_PER_CELL>1
-  real(kind=8),dimension(1:nvar_state,1:nminicell)::minicells
+  real(kind=8),dimension(1:nvar_state)::uu
+#else
+  real(kind=8),dimension(1:nvar)::uu
 #endif
   real(kind=8),dimension(1:ndim)::gg
   real(kind=8),dimension(1:6)::bb
@@ -87,6 +88,9 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
 
   ! Mesh spacing at that level
   dx=r%boxlen/2**ilevel
+#if DOFS_PER_CELL>1
+  dx=dx/dble(dofs_per_cell)
+#endif
   vol=dx**ndim
 
   mass=0.0D0
@@ -100,7 +104,7 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
   ! Loop over active grids by vector sweeps
 #if DOFS_PER_CELL>1
 !$OMP PARALLEL DO DEFAULT(SHARED) &
-!$OMP& PRIVATE(igrid, ind, ivar, idim, uu, bb, gg, dt_lev, iminicell, minicells) &
+!$OMP& PRIVATE(igrid, ind, ivar, idim, uu, bb, gg, dt_lev, iminicell, ioffset) &
 !$OMP& REDUCTION(+:mass, ekin, eint, emag) REDUCTION(MIN:dt)
 #else
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(igrid, ind, ivar, idim, uu, bb, gg, dt_lev) REDUCTION(+:mass, ekin, eint, emag) REDUCTION(MIN:dt)
@@ -113,10 +117,12 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
         ! Gather leaf cells
         if(.NOT. m%grid(igrid)%refined(ind))then
 
+#if DOFS_PER_CELL==1
            ! Gather hydro variables
            do ivar=1,nvar
               uu(ivar)=m%uold(ind,ivar,igrid)
            end do
+#endif
 
            ! Gather MHD variables
            bb=0.0d0
@@ -143,6 +149,14 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
               end do
            endif
 #endif
+#if DOFS_PER_CELL>1
+           do iminicell=1,dofs_per_cell**ndim
+              ! Gather the conservative minicell averages
+              ioffset=(iminicell-1)*nvar_state
+              do ivar=1,nvar_state
+                 uu(ivar)=m%uold(ind,ioffset+ivar,igrid)
+              end do
+#endif
            ! Compute total mass
            mass=mass+uu(1)*vol
 
@@ -167,16 +181,10 @@ subroutine courant_fine(r,g,m,ilevel,mass,ekin,eint,emag,dt)
            end do
 #endif
            ! Compute CFL time-step
-#if DOFS_PER_CELL>1
-           call unpack_parent_cell(uu,minicells)
-           do iminicell=1,nminicell
-              call cmpdt(r,minicells(:,iminicell),bb,gg, &
-                   & dx/real(dofs_per_cell,kind=8),dt_lev)
-              dt=min(dt,dt_lev)
-           end do
-#else
            call cmpdt(r,uu,bb,gg,dx,dt_lev)
            dt=min(dt,dt_lev)
+#if DOFS_PER_CELL>1
+           end do
 #endif
 
         endif

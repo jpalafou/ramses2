@@ -1,8 +1,5 @@
 module hydro_parameters
-  use amr_parameters, only: ndim
-#if DOFS_PER_CELL>1
-  use amr_parameters, only: dp
-#endif
+  use amr_parameters, only: ndim,dp
 
   ! Number of independant variables
 #ifndef NENER
@@ -16,7 +13,7 @@ module hydro_parameters
 #else
   integer,parameter::dofs_per_cell=DOFS_PER_CELL
 #endif
-  ! Number of packed variables and physical variables in one state
+  ! Minicell averages are stored in consecutive blocks of physical variables
 #ifndef NVAR
   integer,parameter::nvar=(5+nener)*dofs_per_cell**ndim
 #else
@@ -71,36 +68,20 @@ module hydro_parameters
   real(dp),parameter::p3_face_left(-2:2)=(/-1,10,20,-6,1/)/24.0_dp
   real(dp),parameter::p3_face_right(-2:2)=(/1,-6,20,10,-1/)/24.0_dp
   real(dp),parameter::p3_integrate(-1:1)=(/1,22,1/)/24.0_dp
+#endif
 
 contains
 
-  pure subroutine unpack_parent_cell(parent,minicells)
-    real(dp),intent(in)::parent(1:nvar)
-    real(dp),intent(out)::minicells(1:nvar_per_minicell,1:nminicell)
-    integer::iminicell,ilo,ihi
+  pure function cell_average(u) result(average)
+    real(dp),intent(in)::u(1:nvar)
+    real(dp)::average(1:nvar_state)
 
-    minicells(:,1)=parent(1:nvar_per_minicell)
-    do iminicell=2,nminicell
-       ilo=(iminicell-1)*nvar_per_minicell+1
-       ihi=iminicell*nvar_per_minicell
-       minicells(:,iminicell)=parent(1:nvar_per_minicell)+parent(ilo:ihi)
-       minicells(:,1)=minicells(:,1)-parent(ilo:ihi)
-    end do
-  end subroutine unpack_parent_cell
-
-  pure subroutine pack_parent_cell(minicells,parent)
-    real(dp),intent(in)::minicells(1:nvar_per_minicell,1:nminicell)
-    real(dp),intent(out)::parent(1:nvar)
-    integer::iminicell,ilo,ihi
-
-    parent(1:nvar_per_minicell)=sum(minicells,dim=2)/real(nminicell,kind=dp)
-    do iminicell=2,nminicell
-       ilo=(iminicell-1)*nvar_per_minicell+1
-       ihi=iminicell*nvar_per_minicell
-       parent(ilo:ihi)=minicells(:,iminicell)-parent(1:nvar_per_minicell)
-    end do
-  end subroutine pack_parent_cell
+#if DOFS_PER_CELL>1
+    average=sum(reshape(u,(/nvar_state,dofs_per_cell**ndim/)),dim=2)/real(dofs_per_cell**ndim,kind=dp)
+#else
+    average=u
 #endif
+  end function cell_average
 
 end module hydro_parameters
 
