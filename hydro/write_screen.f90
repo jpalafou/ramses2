@@ -1,7 +1,7 @@
 subroutine write_screen(r,m)
-  use amr_parameters, only: ndim
+  use amr_parameters, only: ndim,dp
   use amr_commons, only: mesh_t, run_t
-  use hydro_parameters, only: nener
+  use hydro_parameters, only: nener,nvar_state,cell_average
   use color_module, only: c_blue, c_reset
   implicit none
   type(run_t)::r
@@ -28,6 +28,7 @@ subroutine write_screen(r,m)
   integer::igrid,ind
   logical::leaf
   real(kind=8)::ekin,emag,erad,dx
+  real(dp)::uavg(1:nvar_state)
 
 #ifdef HYDRO
 
@@ -88,13 +89,14 @@ subroutine write_screen(r,m)
               do ind=1,2
                  leaf=.not.m%grid(igrid)%refined(ind)
                  if(leaf)then
+                    uavg=cell_average(m%uold(ind,:,igrid))
                     nleaf=nleaf+1
                     ll(nleaf)=m%grid(igrid)%lev
                     xx(nleaf)=(2*m%grid(igrid)%ckey(1)+ind-0.5)*dx-m%skip(1)
-                    dd(nleaf)=m%uold(ind,1,igrid)
-                    uu(nleaf)=m%uold(ind,2,igrid)/m%uold(ind,1,igrid)
-                    vv(nleaf)=m%uold(ind,3,igrid)/m%uold(ind,1,igrid)
-                    ww(nleaf)=m%uold(ind,4,igrid)/m%uold(ind,1,igrid)
+                    dd(nleaf)=uavg(1)
+                    uu(nleaf)=uavg(2)/uavg(1)
+                    vv(nleaf)=uavg(3)/uavg(1)
+                    ww(nleaf)=uavg(4)/uavg(1)
                     ekin=0.5*dd(nleaf)*(uu(nleaf)**2+vv(nleaf)**2+ww(nleaf)**2)
                     emag=0.0
 #ifdef MHD
@@ -106,15 +108,15 @@ subroutine write_screen(r,m)
                     erad=0.0d0
 #if NENER>0
                     do irad=1,nener
-                       erad=erad+m%uold(ind,5+irad,igrid)
-                       prad(irad,nleaf)=(r%gamma_rad(irad)-1)*m%uold(ind,5+irad,igrid)
+                       erad=erad+uavg(5+irad)
+                       prad(irad,nleaf)=(r%gamma_rad(irad)-1)*uavg(5+irad)
                     end do
 #endif
-                    pp(nleaf)=m%uold(ind,5,igrid)-ekin-emag-erad
+                    pp(nleaf)=uavg(5)-ekin-emag-erad
                     pp(nleaf)=(r%gamma-1)*pp(nleaf)
 #if NION>0 && !defined(DO_RTZ)
                     do i=1,nx
-                       xi(i,nleaf)=m%uold(ind,ix(i),igrid)/m%uold(ind,1,igrid)
+                       xi(i,nleaf)=uavg(ix(i))/uavg(1)
                        if(ABS(xi(i,nleaf))<1d-99)xi(i,nleaf)=0.0D0
                     end do
 #endif

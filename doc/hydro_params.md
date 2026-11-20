@@ -32,3 +32,6 @@ This namelist is called &HYDRO_PARAMS, and is used to specify runtime parameters
 The `DOFS_PER_CELL>1` hydro path currently supports periodic, uniform-mesh,
 CPU Euler calculations without coupled or hydro source terms. Unsupported
 combinations are rejected while reading the namelist.
+
+Each DOF stores a conservative minicell average directly. Restart files from
+the earlier parent-average/deviation representation are incompatible with this layout.

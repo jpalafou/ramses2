@@ -209,26 +209,24 @@ contains
 
 #if DOFS_PER_CELL>1
   subroutine unpack_hydro_stencil(h)
-    use amr_parameters, only: ndim,dp
-    use hydro_parameters, only: nvar,nvar_per_minicell,nminicell,dofs_per_cell,unpack_parent_cell
+    use amr_parameters, only: ndim
+    use hydro_parameters, only: nvar_per_minicell,dofs_per_cell
 
     class(hydro_kernel_t),intent(inout)::h
-    integer::i,j,k,ii,jj,kk,iminicell,ndofsy,ndofsz
-    real(dp)::parent(1:nvar)
-    real(dp)::minicells(1:nvar_per_minicell,1:nminicell)
+    integer::i,j,k,ii,jj,kk,iminicell,ilo,ihi,ndofsy,ndofsz
 
     ndofsy=merge(dofs_per_cell,1,ndim>1)
     ndofsz=merge(dofs_per_cell,1,ndim>2)
     do k=h%ku1,h%ku2
        do j=h%ju1,h%ju2
           do i=h%iu1,h%iu2
-             parent=h%uloc(i,j,k,:)
-             call unpack_parent_cell(parent,minicells)
              do kk=0,ndofsz-1
                 do jj=0,ndofsy-1
                    do ii=0,dofs_per_cell-1
                       iminicell=1+ii+dofs_per_cell*jj+dofs_per_cell**2*kk
-                      h%uvirtual(dofs_per_cell*i+ii,ndofsy*j+jj,ndofsz*k+kk,:)=minicells(:,iminicell)
+                      ilo=(iminicell-1)*nvar_per_minicell+1
+                      ihi=iminicell*nvar_per_minicell
+                      h%uvirtual(dofs_per_cell*i+ii,ndofsy*j+jj,ndofsz*k+kk,:)=h%uloc(i,j,k,ilo:ihi)
                    end do
                 end do
              end do

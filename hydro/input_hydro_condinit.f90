@@ -32,7 +32,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   use amr_parameters, only: ndim, twotondim, nvector
   use hydro_parameters, only: nvar, nener
 #if DOFS_PER_CELL>1 && !defined(MHD)
-  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_per_minicell,pack_parent_cell
+  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_per_minicell
 #endif
   use amr_commons, only: run_t,global_t,mesh_t
   implicit none
@@ -47,7 +47,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   !------------------------------------------------------------
   integer::igrid,ngrid,ind,idim,nstride,i,ivar,irad
 #if DOFS_PER_CELL>1 && !defined(MHD)
-  integer::iminicell,ioffset
+  integer::iminicell,ioffset,ilo,ihi
 #endif
   real(kind=8),dimension(1:nvector,1:ndim)::xx
 #ifdef MHD
@@ -58,8 +58,6 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   real(kind=8)::dx
 #if DOFS_PER_CELL>1 && !defined(MHD)
   real(kind=8),dimension(1:nvector,1:nvar_per_minicell,1:nminicell)::qmini
-  real(kind=8),dimension(1:nvar_per_minicell,1:nminicell)::minicells
-  real(kind=8),dimension(1:nvar)::parent
   real(kind=8)::dxmini,rr,vx,vy,vz,pp,ekin,erad
 #endif
 
@@ -88,7 +86,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
            call condinit(r,g,xx,qq,dxmini,ngrid)
            qmini(1:ngrid,:,iminicell)=qq(1:ngrid,1:nvar_per_minicell)
         end do
-        ! Convert each virtual primitive state to conservative form and pack it
+        ! Convert each minicell primitive state to conservative form and store it
         do i=1,ngrid
            do iminicell=1,nminicell
               rr=qmini(i,1,iminicell)
@@ -111,10 +109,10 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
               do ivar=6+nener,nvar_per_minicell
                  qmini(i,ivar,iminicell)=rr*qmini(i,ivar,iminicell)
               end do
+              ilo=(iminicell-1)*nvar_per_minicell+1
+              ihi=iminicell*nvar_per_minicell
+              m%uold(ind,ilo:ihi,igrid+i-1)=qmini(i,:,iminicell)
            end do
-           minicells=qmini(i,:,:)
-           call pack_parent_cell(minicells,parent)
-           m%uold(ind,:,igrid+i-1)=parent
         end do
      end do
   end do

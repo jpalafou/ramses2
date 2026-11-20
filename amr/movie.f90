@@ -6,7 +6,7 @@ contains
 !=======================================================================
 subroutine m_output_frame(pst)
   use amr_parameters, only: ndim, nvector, twotondim, flen
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nvar_state
   use rt_parameters, only: nrtgrp
   use ramses_commons, only: pst_t
   use output_amr_module, only: output_info
@@ -22,7 +22,7 @@ subroutine m_output_frame(pst)
   character(len=1)::temp_string
   character(len=5)::istep_str,dummy
   character(len=flen)::moviedir,infofile
-  character(len=flen),dimension(0:nvar+2+nrtgrp)::moviefiles
+  character(len=flen),dimension(0:nvar_state+2+nrtgrp)::moviefiles
   integer::ilun,kk,ll,ind_proj,input_size,output_size
   integer,dimension(:),allocatable::input_array,output_array
   real(kind=8)::delx,dely,delz,timer
@@ -61,17 +61,17 @@ subroutine m_output_frame(pst)
      moviefiles(4) = trim(moviedir)//'vz_'//trim(istep_str)//'.map'
      moviefiles(5) = trim(moviedir)//'temp_'//trim(istep_str)//'.map'
 #if NVAR>5
-     do ll=6,NVAR
+     do ll=6,nvar_state
         write(dummy,'(I3.1)') ll
         moviefiles(ll) = trim(moviedir)//'var'//trim(adjustl(dummy))//'_'//trim(istep_str)//'.map'
      end do
 #endif
-     do ll=nvar+1,nvar+nrtgrp
-        write(dummy,'(I3.1)') ll-nvar
+     do ll=nvar_state+1,nvar_state+nrtgrp
+        write(dummy,'(I3.1)') ll-nvar_state
         moviefiles(ll) = trim(moviedir)//'Fp'//trim(adjustl(dummy))//'_'//trim(istep_str)//'.map'
      end do
-     moviefiles(NVAR+nrtgrp+1) = trim(moviedir)//'dm_'//trim(istep_str)//'.map'
-     moviefiles(NVAR+nrtgrp+2) = trim(moviedir)//'stars_'//trim(istep_str)//'.map'
+     moviefiles(nvar_state+nrtgrp+1) = trim(moviedir)//'dm_'//trim(istep_str)//'.map'
+     moviefiles(nvar_state+nrtgrp+2) = trim(moviedir)//'stars_'//trim(istep_str)//'.map'
 
      allocate(data_single(1:r%nw_frame*r%nh_frame))
      allocate(data_frame (1:r%nw_frame*r%nh_frame))
@@ -116,7 +116,7 @@ subroutine m_output_frame(pst)
            dens=1d0
         endif
 
-        do kk=1,NVAR+nrtgrp
+        do kk=1,nvar_state+nrtgrp
            if(r%movie_vars(kk).eq.1)then
               input_array(2)=kk
               call r_output_frame(pst,input_array,input_size,output_array,output_size)
@@ -144,19 +144,19 @@ subroutine m_output_frame(pst)
      endif
 
      ! Dark matter projection - runs even without hydro (DMO).
-     if(r%movie_vars(NVAR+nrtgrp+1).eq.1) then
-        input_array(2) = NVAR+nrtgrp+1
+     if(r%movie_vars(nvar_state+nrtgrp+1).eq.1) then
+        input_array(2) = nvar_state+nrtgrp+1
         call r_output_frame(pst,input_array,input_size,output_array,output_size)
         data_frame = transfer(output_array,data_frame)
-        call write_map(moviefiles(NVAR+nrtgrp+1),data_frame,data_single,r%nw_frame,r%nh_frame,timer,delx,dely,delz)
+        call write_map(moviefiles(nvar_state+nrtgrp+1),data_frame,data_single,r%nw_frame,r%nh_frame,timer,delx,dely,delz)
      end if
 
      ! Star projection.
-     if(r%movie_vars(NVAR+nrtgrp+2).eq.1) then
-        input_array(2) = NVAR+nrtgrp+2
+     if(r%movie_vars(nvar_state+nrtgrp+2).eq.1) then
+        input_array(2) = nvar_state+nrtgrp+2
         call r_output_frame(pst,input_array,input_size,output_array,output_size)
         data_frame = transfer(output_array,data_frame)
-        call write_map(moviefiles(NVAR+nrtgrp+2),data_frame,data_single,r%nw_frame,r%nh_frame,timer,delx,dely,delz)
+        call write_map(moviefiles(nvar_state+nrtgrp+2),data_frame,data_single,r%nw_frame,r%nh_frame,timer,delx,dely,delz)
      end if
 
      deallocate(data_single)
@@ -218,7 +218,7 @@ recursive subroutine r_output_frame(pst,input_array,input_size,output_array,outp
   use ramses_commons, only: pst_t
   use mdl_parameters
   use hilbert
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nvar_state
   use rt_parameters, only: nrtgrp
   implicit none
   type(pst_t)::pst
@@ -246,9 +246,9 @@ recursive subroutine r_output_frame(pst,input_array,input_size,output_array,outp
      allocate(next_map(1:pst%s%r%nw_frame*pst%s%r%nh_frame))
      map=transfer(output_array,map)
      next_map=transfer(next_output_array,next_map)
-     ! Hydro variables (ind_var in 0..nvar+nrtgrp) follow the method's reduction;
+     ! Hydro variables (ind_var in 0..nvar_state+nrtgrp) follow the method's reduction;
      ! particle (DM/star) maps are always summed.
-     if(ind_var.ge.0 .and. ind_var.le.nvar+nrtgrp)then
+     if(ind_var.ge.0 .and. ind_var.le.nvar_state+nrtgrp)then
         select case(trim(method))
         case('min')
            map=min(map,next_map)
@@ -286,8 +286,8 @@ end subroutine r_output_frame
 !=======================================================================
 !=======================================================================
 subroutine output_frame(s,ind_proj,ind_var,map_size,map)
-  use amr_parameters, only:ndim, nvector, twotondim
-  use hydro_parameters, only: nvar, nener, ie
+  use amr_parameters, only:ndim, nvector, twotondim, dp
+  use hydro_parameters, only: nvar_state, nener, ie, cell_average
   use rt_parameters, only: nrtgrp
   use ramses_commons, only: ramses_t
   implicit none
@@ -311,6 +311,7 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
   logical::ok
   real(kind=8),dimension(1:ndim)::xx
   real(kind=8)::temp,ekk
+  real(dp)::uavg(1:nvar_state)
   integer::igrid,idim,ilevel,ip
   integer::box_xidx,box_yidx,box_zidx
   real(kind=8)::theta_cam,phi_cam,dist_cam,fov_camera
@@ -477,7 +478,7 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
 
   ! ---------- HYDRO CELL PROJECTION ----------
   ! Skip the AMR walk entirely when the requested variable is particle-only.
-  if(ind_var.le.nvar+nrtgrp .and. r%hydro) then
+  if(ind_var.le.nvar_state+nrtgrp .and. r%hydro) then
 
   do ilevel=r%levelmin,nlevelmax_frame
 
@@ -497,10 +498,11 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
            ok=(.NOT.m%grid(igrid)%refined(ind)).or.(ilevel==nlevelmax_frame)
 
 #ifdef HYDRO
+           if(ok)uavg=cell_average(m%uold(ind,:,igrid))
            ! varmin/varmax filter on ivar_frame (matches ramses' behaviour)
-           if(ok .and. r%ivar_frame.ge.1 .and. r%ivar_frame.le.nvar)then
-              uvar = m%uold(ind,r%ivar_frame,igrid)
-              if(r%ivar_frame.gt.1) uvar = uvar/max(real(m%uold(ind,1,igrid),kind=8),r%smallr)
+           if(ok .and. r%ivar_frame.ge.1 .and. r%ivar_frame.le.nvar_state)then
+              uvar = uavg(r%ivar_frame)
+              if(r%ivar_frame.gt.1) uvar = uvar/max(real(uavg(1),kind=8),r%smallr)
               ok = ok .and. (uvar.ge.r%varmin_frame(ind_proj))
               ok = ok .and. (uvar.le.r%varmax_frame(ind_proj))
            endif
@@ -579,15 +581,15 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
 #ifdef HYDRO
                  ! Pick the projection weight according to the method.
                  if(is_mean_mass)then
-                    weight = dvol*max(dble(m%uold(ind,1,igrid)),r%smallr)
+                    weight = dvol*max(dble(uavg(1)),r%smallr)
                  elseif(is_mean_dens)then
-                    weight = dvol*max(dble(m%uold(ind,1,igrid)),r%smallr)
+                    weight = dvol*max(dble(uavg(1)),r%smallr)
                  elseif(is_mean_vol)then
                     weight = dvol
                  elseif(is_sum)then
                     weight = 1d0
                  else
-                    weight = dvol*max(dble(m%uold(ind,1,igrid)),r%smallr)
+                    weight = dvol*max(dble(uavg(1)),r%smallr)
                  endif
 
                  ! Compute uvar for the requested variable.
@@ -602,31 +604,31 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
                     endif
                     cycle
                  else if(ind_var==1)then
-                    uvar = max(dble(m%uold(ind,1,igrid)),r%smallr)
+                    uvar = max(dble(uavg(1)),r%smallr)
                  else if(ind_var.ge.2 .and. ind_var.le.ndim+1)then
-                    uvar = m%uold(ind,ind_var,igrid)/max(dble(m%uold(ind,1,igrid)),r%smallr)
+                    uvar = uavg(ind_var)/max(dble(uavg(1)),r%smallr)
                  else if(ind_var==5)then
                     ekk=0d0
                     do idim=1,3
-                       ekk=ekk+0.5d0*m%uold(ind,idim+1,igrid)**2/max(dble(m%uold(ind,1,igrid)),r%smallr)
+                       ekk=ekk+0.5d0*uavg(idim+1)**2/max(dble(uavg(1)),r%smallr)
                     enddo
 #if NENER>0
                     do irad=1,nener
-                      ekk = ekk+m%uold(ind,5+irad,igrid)
+                      ekk = ekk+uavg(5+irad)
                     enddo
 #endif
 #ifdef MHD
                     ekk=ekk+0.125d0*sum((m%bold(ind,1:3,igrid)+m%bold(ind,4:6,igrid))**2)
 #endif
-                    temp=(r%gamma-1d0)*(m%uold(ind,5,igrid)-ekk)
-                    temp=max(temp/max(dble(m%uold(ind,1,igrid)),r%smallr),r%smallc**2)*scale_T2
+                    temp=(r%gamma-1d0)*(uavg(5)-ekk)
+                    temp=max(temp/max(dble(uavg(1)),r%smallr),r%smallc**2)*scale_T2
                     uvar = temp
 #ifdef DO_RT
-                 else if(ind_var.ge.nvar+1 .and. ind_var.le.nvar+nrtgrp)then
-                    uvar = m%rtuold(ind,1+(ind_var-nvar-1)*(ndim+1),igrid)*g%rt_c(ilevel)
+                 else if(ind_var.ge.nvar_state+1 .and. ind_var.le.nvar_state+nrtgrp)then
+                    uvar = m%rtuold(ind,1+(ind_var-nvar_state-1)*(ndim+1),igrid)*g%rt_c(ilevel)
 #endif
                  else
-                    uvar = m%uold(ind,ind_var,igrid)
+                    uvar = uavg(ind_var)
                  endif
 
                  if(is_min)then
@@ -654,8 +656,8 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
 
   ! ---------- PARTICLE PROJECTION ----------
 #if NDIM>2
-  ! Dark matter: ind_var == NVAR+nrtgrp+1
-  if(ind_var.eq.NVAR+nrtgrp+1)then
+  ! Dark matter: ind_var == nvar_state+nrtgrp+1
+  if(ind_var.eq.nvar_state+nrtgrp+1)then
      call project_particles(s%p, .true., r%zoom_only_frame(ind_proj), r%mass_cut_refine, &
           & ind_proj,r,xcen,ycen,zcen,theta_cam,phi_cam,dist_cam, &
           & r%focal_camera(ind_proj),fov_camera,perspective, &
@@ -664,8 +666,8 @@ subroutine output_frame(s,ind_proj,ind_var,map_size,map)
           & map,map_size)
   endif
 
-  ! Stars: ind_var == NVAR+nrtgrp+2
-  if(ind_var.eq.NVAR+nrtgrp+2)then
+  ! Stars: ind_var == nvar_state+nrtgrp+2
+  if(ind_var.eq.nvar_state+nrtgrp+2)then
      call project_particles(s%star, .false., .false., -1d0, &
           & ind_proj,r,xcen,ycen,zcen,theta_cam,phi_cam,dist_cam, &
           & r%focal_camera(ind_proj),fov_camera,perspective, &
@@ -837,7 +839,7 @@ end subroutine project_particles
 subroutine set_movie_vars(r)
   use amr_parameters, only: ndim
   use amr_commons, only: run_t
-  use hydro_parameters, only: nvar
+  use hydro_parameters, only: nvar_state
   use rt_parameters, only: nrtgrp
   ! Map textual movie variable names to the integer index used by the
   ! variable dispatch in output_frame.
@@ -851,18 +853,18 @@ subroutine set_movie_vars(r)
   if(ANY(r%movie_vars_txt=='vz   '))r%movie_vars(4)=1
   if(ANY(r%movie_vars_txt=='temp '))r%movie_vars(5)=1
 #if NVAR>5
-  do ll=6,nvar
+  do ll=6,nvar_state
      write(dummy,'(I3.1)') ll
      if(ANY(r%movie_vars_txt=='var'//trim(adjustl(dummy))//' '))r%movie_vars(ll)=1
   end do
 #endif
-  do ll=nvar+1,nvar+nrtgrp
-     tmp=ll-nvar
+  do ll=nvar_state+1,nvar_state+nrtgrp
+     tmp=ll-nvar_state
      write(dummy,'(I3.1)') tmp
      if(ANY(r%movie_vars_txt=='Fp'//trim(adjustl(dummy))//' '))r%movie_vars(ll)=1
   end do
-  if(ANY(r%movie_vars_txt=='dm   '))r%movie_vars(NVAR+nrtgrp+1)=1
-  if(ANY(r%movie_vars_txt=='stars'))r%movie_vars(NVAR+nrtgrp+2)=1
+  if(ANY(r%movie_vars_txt=='dm   '))r%movie_vars(nvar_state+nrtgrp+1)=1
+  if(ANY(r%movie_vars_txt=='stars'))r%movie_vars(nvar_state+nrtgrp+2)=1
 
 end subroutine set_movie_vars
 !=======================================================================

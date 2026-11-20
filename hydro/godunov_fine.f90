@@ -321,7 +321,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   use amr_parameters, only: ndim, twondim, twotondim
   use hydro_parameters, only: nvar
 #if DOFS_PER_CELL>1
-  use hydro_parameters, only: dofs_per_cell,nminicell,nvar_per_minicell,pack_parent_cell
+  use hydro_parameters, only: dofs_per_cell,nvar_per_minicell
 #endif
   use ramses_commons, only: ramses_t
   use nbors_utils
@@ -373,8 +373,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   integer::igrid,ichild
   real(kind=8)::fluxL,fluxR
 #if DOFS_PER_CELL>1
-  integer::ii,jj,kk,iminicell,ndofsy,ndofsz
-  real(kind=8)::minicells(1:nvar_per_minicell,1:nminicell),parent(1:nvar)
+  integer::ii,jj,kk,iminicell,ilo,ihi,ndofsy,ndofsz
 #endif
 
 #ifdef MHD
@@ -733,7 +732,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
   end do
 
 #if DOFS_PER_CELL>1
-  ! Expand packed parent cells into the virtual hydro mesh
+  ! Gather minicell averages into the virtual hydro mesh
 #ifdef MHD
   write(*,*)'High-order hydro does not support MHD'
   stop
@@ -757,7 +756,7 @@ subroutine godfine1(s,ind_grid,ilevel,h)
      stop
   end select
 
-  ! Pack the candidate virtual states into the local parent cells
+  ! Store the candidate minicell averages in the local parent cells
   ndofsy=merge(dofs_per_cell,1,ndim>1)
   ndofsz=merge(dofs_per_cell,1,ndim>2)
   ii0=1; jj0=0; kk0=0
@@ -788,13 +787,13 @@ subroutine godfine1(s,ind_grid,ilevel,h)
                        do jj=0,ndofsy-1
                           do ii=0,dofs_per_cell-1
                              iminicell=1+ii+dofs_per_cell*jj+dofs_per_cell**2*kk
-                             minicells(:,iminicell)=h%ustage(dofs_per_cell*i3+ii, &
+                             ilo=(iminicell-1)*nvar_per_minicell+1
+                             ihi=iminicell*nvar_per_minicell
+                             m%unew(ind_son,ilo:ihi,ichild)=h%ustage(dofs_per_cell*i3+ii, &
                                   & ndofsy*j3+jj,ndofsz*k3+kk,:)
                           end do
                        end do
                     end do
-                    call pack_parent_cell(minicells,parent)
-                    m%unew(ind_son,:,ichild)=parent
                  end do
               end do
            end do

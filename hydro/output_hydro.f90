@@ -40,9 +40,6 @@ end subroutine r_output_hydro
 subroutine output_hydro(s,filename)
   use amr_parameters, only: ndim, twotondim, flen, nbuf_io
   use hydro_parameters, only: nvar, nprim, nener,ie,dofs_per_cell,nvar_state
-#if DOFS_PER_CELL>1
-  use hydro_parameters, only: nminicell,unpack_parent_cell
-#endif
   use ramses_commons, only: ramses_t, open_file, close_file
   use posix_io, only: pio_t, pio_open, pio_write, pio_close
   use iso_c_binding, only: c_loc
@@ -52,7 +49,7 @@ subroutine output_hydro(s,filename)
   !-----------------------------------
   ! Output hydro data in file
   !-----------------------------------
-  integer::ilevel,igrid,ilun,irad,n,ind,i,nchunk,iminicell
+  integer::ilevel,igrid,ilun,irad,n,ind,i,nchunk,iminicell,ilo,ihi
   integer(kind=8),dimension(s%r%levelmin:s%r%nlevelmax)::nskip
   integer(kind=8)::offset,nbyte
   real(kind=4),allocatable,dimension(:,:,:,:),target::qbuf
@@ -60,9 +57,6 @@ subroutine output_hydro(s,filename)
   real(kind=8),dimension(1:twotondim,1:nprim,1:dofs_per_cell**ndim)::qold
   real(kind=8),dimension(1:twotondim,1:nvar)::uold
   real(kind=8),dimension(1:nvar_state)::ustate
-#if DOFS_PER_CELL>1
-  real(kind=8),dimension(1:nvar_state,1:nminicell)::minicells
-#endif
   real(kind=8),dimension(1:twotondim,1:6)::bold
   real(kind=8)::vx,vy,vz,bx,by,bz
   real(kind=8)::etot,ekin,emag,erad,dd,pp
@@ -91,15 +85,10 @@ subroutine output_hydro(s,filename)
 #endif
         do ind=1,twotondim
 
-#if DOFS_PER_CELL>1
-           call unpack_parent_cell(uold(ind,:),minicells)
-#endif
            do iminicell=1,dofs_per_cell**ndim
-#if DOFS_PER_CELL>1
-              ustate=minicells(:,iminicell)
-#else
-              ustate=uold(ind,:)
-#endif
+              ilo=(iminicell-1)*nvar_state+1
+              ihi=iminicell*nvar_state
+              ustate=uold(ind,ilo:ihi)
               ! Compute density
               dd=ustate(1)
 
@@ -271,10 +260,7 @@ end subroutine backup_hydro
 !###################################################
 subroutine file_descriptor_hydro(r,filename,write_bkp_file)
   use amr_parameters, only: ndim, flen
-  use hydro_parameters, only: nvar, nener, nprim, ie, nion
-#if DOFS_PER_CELL>1
-  use hydro_parameters, only: nvar_state
-#endif
+  use hydro_parameters, only: nvar,nener,nprim,ie,nion,nvar_state,dofs_per_cell
   use amr_commons, only: run_t
   implicit none
   type(run_t)::r
@@ -282,7 +268,8 @@ subroutine file_descriptor_hydro(r,filename,write_bkp_file)
   logical::write_bkp_file
 
   character(LEN=flen)::fileloc
-  integer::ivar,ilun
+  character(LEN=32)::suffix
+  integer::ivar,ilun,iminicell,ioffset
 
   if(r%verbose)write(*,*)'Entering file_descriptor_hydro'
 
@@ -299,39 +286,28 @@ subroutine file_descriptor_hydro(r,filename,write_bkp_file)
 #else
      write(ilun,'("nvar        =",I11)')nvar
 #endif
-     ivar=1
-     write(ilun,'("variable #",I2,": density")')ivar
-     ivar=2
-     write(ilun,'("variable #",I2,": momentum_x")')ivar
-     ivar=3
-     write(ilun,'("variable #",I2,": momentum_y")')ivar
-     ivar=4
-     write(ilun,'("variable #",I2,": momentum_z")')ivar
-     ivar=5
-     write(ilun,'("variable #",I2,": total_energy")')ivar
+     do iminicell=1,dofs_per_cell**ndim
+        ioffset=(iminicell-1)*nvar_state
+        suffix=''
+        if(dofs_per_cell>1)write(suffix,'("_minicell_",I0)')iminicell
+        write(ilun,'("variable #",I0,": density",A)')ioffset+1,trim(suffix)
+        write(ilun,'("variable #",I0,": momentum_x",A)')ioffset+2,trim(suffix)
+        write(ilun,'("variable #",I0,": momentum_y",A)')ioffset+3,trim(suffix)
+        write(ilun,'("variable #",I0,": momentum_z",A)')ioffset+4,trim(suffix)
+        write(ilun,'("variable #",I0,": total_energy",A)')ioffset+5,trim(suffix)
 #if NENER>0
-     ! Non-thermal pressures
-     do ivar=6,5+nener
-        write(ilun,'("variable #",I2,": non_thermal_energy_",I0)')ivar,ivar-5
-     end do
+        ! Non-thermal energies
+        do ivar=6,5+nener
+           write(ilun,'("variable #",I0,": non_thermal_energy_",I0,A)')ioffset+ivar,ivar-5,trim(suffix)
+        end do
 #endif
 #if NVAR>5+NENER
-#if DOFS_PER_CELL>1
-     ! Physical passive scalars in the parent average
-     do ivar=6+nener,nvar_state
-        write(ilun,'("variable #",I2,": density_scalar_",I0)')ivar,ivar-5-nener
-     end do
-     ! Packed differences between minicells and the parent average
-     do ivar=nvar_state+1,nvar
-        write(ilun,'("variable #",I2,": packed_deviation_",I0)')ivar,ivar-nvar_state
-     end do
-#else
-     ! Passive scalars
-     do ivar=6+nener,nvar
-        write(ilun,'("variable #",I2,": density_scalar_",I0)')ivar,ivar-5-nener
-     end do
+        ! Passive scalars
+        do ivar=6+nener,nvar_state
+           write(ilun,'("variable #",I0,": density_scalar_",I0,A)')ioffset+ivar,ivar-5-nener,trim(suffix)
+        end do
 #endif
-#endif
+     end do
 #ifdef MHD
      ivar=nvar+1
      write(ilun,'("variable #",I2,": left_magnetic_field_x")')ivar
