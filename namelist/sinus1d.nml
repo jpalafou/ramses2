@@ -8,7 +8,7 @@ bin/ramses1d namelist/sinus1d.nml
 
 &RUN_PARAMS
 hydro=.true.
-nstepmax=10
+nstepmax=10000000
 ncontrol=1
 /
 
@@ -25,7 +25,7 @@ nregion=0
 /
 
 &OUTPUT_PARAMS
-foutput=10
+foutput=10000000
 tout=1.0
 /
 
