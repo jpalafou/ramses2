@@ -1,7 +1,7 @@
 subroutine write_screen(r,m)
   use amr_parameters, only: ndim,dp
   use amr_commons, only: mesh_t, run_t
-  use hydro_parameters, only: nener,nvar_state,cell_average
+  use hydro_parameters, only: nener,nvar_state,dofs_per_cell
   use color_module, only: c_blue, c_reset
   implicit none
   type(run_t)::r
@@ -25,7 +25,7 @@ subroutine write_screen(r,m)
   integer::irad
   real(kind=8),dimension(:,:),allocatable::prad
 #endif
-  integer::igrid,ind
+  integer::igrid,ind,iminicell
   logical::leaf
   real(kind=8)::ekin,emag,erad,dx
   real(dp)::uavg(1:nvar_state)
@@ -41,7 +41,7 @@ subroutine write_screen(r,m)
         do igrid=m%head(ilevel),m%tail(ilevel)
            do ind=1,2
               leaf = .not. m%grid(igrid)%refined(ind)
-              if(leaf)nleaf=nleaf+1
+              if(leaf)nleaf=nleaf+dofs_per_cell
            end do
         end do
      endif
@@ -89,47 +89,52 @@ subroutine write_screen(r,m)
               do ind=1,2
                  leaf=.not.m%grid(igrid)%refined(ind)
                  if(leaf)then
-                    uavg=cell_average(m%uold(ind,:,igrid))
-                    nleaf=nleaf+1
-                    ll(nleaf)=m%grid(igrid)%lev
-                    xx(nleaf)=(2*m%grid(igrid)%ckey(1)+ind-0.5)*dx-m%skip(1)
-                    dd(nleaf)=uavg(1)
-                    uu(nleaf)=uavg(2)/uavg(1)
-                    vv(nleaf)=uavg(3)/uavg(1)
-                    ww(nleaf)=uavg(4)/uavg(1)
-                    ekin=0.5*dd(nleaf)*(uu(nleaf)**2+vv(nleaf)**2+ww(nleaf)**2)
-                    emag=0.0
+                    do iminicell=1,dofs_per_cell
+                       uavg=m%uold(ind,(iminicell-1)*nvar_state+1:iminicell*nvar_state,igrid)
+                       nleaf=nleaf+1
+                       ll(nleaf)=m%grid(igrid)%lev
+                       xx(nleaf)=(2*m%grid(igrid)%ckey(1)+ind-0.5)*dx-m%skip(1)
+#if DOFS_PER_CELL>1
+                       xx(nleaf)=xx(nleaf)+((iminicell-0.5d0)/dofs_per_cell-0.5d0)*dx
+#endif
+                       dd(nleaf)=uavg(1)
+                       uu(nleaf)=uavg(2)/uavg(1)
+                       vv(nleaf)=uavg(3)/uavg(1)
+                       ww(nleaf)=uavg(4)/uavg(1)
+                       ekin=0.5*dd(nleaf)*(uu(nleaf)**2+vv(nleaf)**2+ww(nleaf)**2)
+                       emag=0.0
 #ifdef MHD
-                    AA(nleaf)=0.5*(m%bold(ind,1,igrid)+m%bold(ind,4,igrid))
-                    BB(nleaf)=0.5*(m%bold(ind,2,igrid)+m%bold(ind,5,igrid))
-                    CC(nleaf)=0.5*(m%bold(ind,3,igrid)+m%bold(ind,6,igrid))
-                    emag=0.5*(AA(nleaf)**2+BB(nleaf)**2+CC(nleaf)**2)
+                       AA(nleaf)=0.5*(m%bold(ind,1,igrid)+m%bold(ind,4,igrid))
+                       BB(nleaf)=0.5*(m%bold(ind,2,igrid)+m%bold(ind,5,igrid))
+                       CC(nleaf)=0.5*(m%bold(ind,3,igrid)+m%bold(ind,6,igrid))
+                       emag=0.5*(AA(nleaf)**2+BB(nleaf)**2+CC(nleaf)**2)
 #endif
-                    erad=0.0d0
+                       erad=0.0d0
 #if NENER>0
-                    do irad=1,nener
-                       erad=erad+uavg(5+irad)
-                       prad(irad,nleaf)=(r%gamma_rad(irad)-1)*uavg(5+irad)
-                    end do
+                       do irad=1,nener
+                          erad=erad+uavg(5+irad)
+                          prad(irad,nleaf)=(r%gamma_rad(irad)-1)*uavg(5+irad)
+                       end do
 #endif
-                    pp(nleaf)=uavg(5)-ekin-emag-erad
-                    pp(nleaf)=(r%gamma-1)*pp(nleaf)
+                       pp(nleaf)=uavg(5)-ekin-emag-erad
+                       pp(nleaf)=(r%gamma-1)*pp(nleaf)
 #if NION>0 && !defined(DO_RTZ)
-                    do i=1,nx
-                       xi(i,nleaf)=uavg(ix(i))/uavg(1)
-                       if(ABS(xi(i,nleaf))<1d-99)xi(i,nleaf)=0.0D0
-                    end do
+                       do i=1,nx
+                          xi(i,nleaf)=uavg(ix(i))/uavg(1)
+                          if(ABS(xi(i,nleaf))<1d-99)xi(i,nleaf)=0.0D0
+                       end do
 #endif
 
-                    ! Values below 1d-99 would need a 3-digit exponent in the E10.3 format
-                    if(ABS(uu(nleaf))<1d-99)uu(nleaf)=0.0D0
-                    if(ABS(vv(nleaf))<1d-99)vv(nleaf)=0.0D0
-                    if(ABS(ww(nleaf))<1d-99)ww(nleaf)=0.0D0
+                       ! Values below 1d-99 would need a 3-digit exponent in the E10.3 format
+                       if(ABS(uu(nleaf))<1d-99)uu(nleaf)=0.0D0
+                       if(ABS(vv(nleaf))<1d-99)vv(nleaf)=0.0D0
+                       if(ABS(ww(nleaf))<1d-99)ww(nleaf)=0.0D0
 #ifdef MHD
-                    if(ABS(AA(nleaf))<1d-99)AA(nleaf)=0.0D0
-                    if(ABS(BB(nleaf))<1d-99)BB(nleaf)=0.0D0
-                    if(ABS(CC(nleaf))<1d-99)CC(nleaf)=0.0D0
+                       if(ABS(AA(nleaf))<1d-99)AA(nleaf)=0.0D0
+                       if(ABS(BB(nleaf))<1d-99)BB(nleaf)=0.0D0
+                       if(ABS(CC(nleaf))<1d-99)CC(nleaf)=0.0D0
 #endif
+                    end do
                  endif
               end do
            end do
