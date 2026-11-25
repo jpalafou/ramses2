@@ -1,5 +1,5 @@
 This namelist advects a diagonal sinusoidal density wave through a periodic 2D domain.
-The density varies from 1 to 2, while both velocity components and pressure are uniformly 1.
+The density varies from 1 to 2, with uniform vx=2, vy=1 and pressure=1.
 Compile the code with:
 make NDIM=2 HYDRO=1 INIT=SINUS DOFS_PER_CELL=1
 
@@ -13,9 +13,9 @@ ncontrol=1
 /
 
 &AMR_PARAMS
-levelmin=5
-levelmax=5
-ngridmax=2000
+levelmin=4
+levelmax=4
+ngridmax=10000
 nexpand=1
 boxlen=1.0
 /
