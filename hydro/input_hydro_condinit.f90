@@ -47,7 +47,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   !------------------------------------------------------------
   integer::igrid,ngrid,ind,idim,nstride,i,ivar,irad
 #if DOFS_PER_CELL>1 && !defined(MHD)
-  integer::iminicell,ioffset,ilo,ihi
+  integer::iminicell,ioffset,ilo,ihi,iquad,nquad
 #endif
   real(kind=8),dimension(1:nvector,1:ndim)::xx
 #ifdef MHD
@@ -59,6 +59,7 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
 #if DOFS_PER_CELL>1 && !defined(MHD)
   real(kind=8),dimension(1:nvector,1:nvar_per_minicell,1:nminicell)::qmini
   real(kind=8)::dxmini,rr,vx,vy,vz,pp,ekin,erad
+  real(kind=8),parameter::xgl(0:1)=(/-1.0d0,1.0d0/)/sqrt(12.0d0)
 #endif
 
   if(m%noct(ilevel)==0)return
@@ -68,50 +69,61 @@ subroutine input_hydro_condinit(r,g,m,ilevel)
   dx=r%boxlen/2**ilevel
 #if DOFS_PER_CELL>1 && !defined(MHD)
   dxmini=dx/dble(dofs_per_cell)
+  ! Two Gauss-Legendre nodes per direction for p3; midpoint for MUSCL
+  nquad=1
+  if(trim(r%scheme)=='p3')nquad=twotondim
   ! Loop over grids by vector sweeps
   do igrid=m%head(ilevel),m%tail(ilevel),nvector
      ngrid=MIN(nvector,m%tail(ilevel)-igrid+1)
      ! Loop over parent cells
      do ind=1,twotondim
-        ! Initialize every virtual cell at its own center
-        do iminicell=1,nminicell
-           do idim=1,ndim
-              nstride=2**(idim-1)
-              ioffset=MOD((iminicell-1)/dofs_per_cell**(idim-1),dofs_per_cell)
-              do i=1,ngrid
-                 xx(i,idim)=(2*m%grid(igrid+i-1)%ckey(idim) &
-                      & +MOD((ind-1)/nstride,2)+(ioffset+0.5d0)/dofs_per_cell)*dx-m%skip(idim)
-              end do
-           end do
-           call condinit(r,g,xx,qq,dxmini,ngrid)
-           qmini(1:ngrid,:,iminicell)=qq(1:ngrid,1:nvar_per_minicell)
-        end do
-        ! Convert each minicell primitive state to conservative form and store it
-        do i=1,ngrid
+        if(nquad>1)m%uold(ind,:,igrid:igrid+ngrid-1)=0.0d0
+        do iquad=1,nquad
+           ! Evaluate primitive states at each minicell quadrature node
            do iminicell=1,nminicell
-              rr=qmini(i,1,iminicell)
-              vx=qmini(i,2,iminicell)
-              vy=qmini(i,3,iminicell)
-              vz=qmini(i,4,iminicell)
-              pp=qmini(i,5,iminicell)
-              ekin=0.5d0*rr*(vx**2+vy**2+vz**2)
-              erad=0.0d0
+              do idim=1,ndim
+                 nstride=2**(idim-1)
+                 ioffset=MOD((iminicell-1)/dofs_per_cell**(idim-1),dofs_per_cell)
+                 do i=1,ngrid
+                    xx(i,idim)=(2*m%grid(igrid+i-1)%ckey(idim) &
+                         & +MOD((ind-1)/nstride,2)+(ioffset+0.5d0)/dofs_per_cell)*dx-m%skip(idim)
+                 end do
+                 if(nquad>1)xx(1:ngrid,idim)=xx(1:ngrid,idim)+dxmini*xgl(MOD((iquad-1)/nstride,2))
+              end do
+              call condinit(r,g,xx,qq,dxmini,ngrid)
+              qmini(1:ngrid,:,iminicell)=qq(1:ngrid,1:nvar_per_minicell)
+           end do
+           ! Convert nodal primitive states before averaging conserved variables
+           do i=1,ngrid
+              do iminicell=1,nminicell
+                 rr=qmini(i,1,iminicell)
+                 vx=qmini(i,2,iminicell)
+                 vy=qmini(i,3,iminicell)
+                 vz=qmini(i,4,iminicell)
+                 pp=qmini(i,5,iminicell)
+                 ekin=0.5d0*rr*(vx**2+vy**2+vz**2)
+                 erad=0.0d0
 #if NENER>0
-              do irad=1,nener
-                 qmini(i,5+irad,iminicell)=qmini(i,5+irad,iminicell)/(r%gamma_rad(irad)-1.0d0)
-                 erad=erad+qmini(i,5+irad,iminicell)
-              end do
+                 do irad=1,nener
+                    qmini(i,5+irad,iminicell)=qmini(i,5+irad,iminicell)/(r%gamma_rad(irad)-1.0d0)
+                    erad=erad+qmini(i,5+irad,iminicell)
+                 end do
 #endif
-              qmini(i,2,iminicell)=rr*vx
-              qmini(i,3,iminicell)=rr*vy
-              qmini(i,4,iminicell)=rr*vz
-              qmini(i,5,iminicell)=pp/(r%gamma-1.0d0)+ekin+erad
-              do ivar=6+nener,nvar_per_minicell
-                 qmini(i,ivar,iminicell)=rr*qmini(i,ivar,iminicell)
+                 qmini(i,2,iminicell)=rr*vx
+                 qmini(i,3,iminicell)=rr*vy
+                 qmini(i,4,iminicell)=rr*vz
+                 qmini(i,5,iminicell)=pp/(r%gamma-1.0d0)+ekin+erad
+                 do ivar=6+nener,nvar_per_minicell
+                    qmini(i,ivar,iminicell)=rr*qmini(i,ivar,iminicell)
+                 end do
+                 ilo=(iminicell-1)*nvar_per_minicell+1
+                 ihi=iminicell*nvar_per_minicell
+                 if(nquad==1)then
+                    m%uold(ind,ilo:ihi,igrid+i-1)=qmini(i,:,iminicell)
+                 else
+                    m%uold(ind,ilo:ihi,igrid+i-1)=m%uold(ind,ilo:ihi,igrid+i-1)+qmini(i,:,iminicell)/dble(nquad)
+                 endif
               end do
-              ilo=(iminicell-1)*nvar_per_minicell+1
-              ihi=iminicell*nvar_per_minicell
-              m%uold(ind,ilo:ihi,igrid+i-1)=qmini(i,:,iminicell)
            end do
         end do
      end do
